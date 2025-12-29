@@ -110,8 +110,11 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-      // Initialize the map
-      const map = L.map("map").setView([60.9333, 10.6833], 10); // Default to Moelv, Norway
+      // Initialize the map with canvas renderer for better performance
+      const map = L.map("map", {
+        preferCanvas: true,
+        renderer: L.canvas(),
+      }).setView([60.9333, 10.6833], 10); // Default to Moelv, Norway
 
       // Add black and white map tiles (CartoDB Positron)
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
@@ -123,6 +126,8 @@
       // Activity type colors
       const activityColors = {
         running: "#FF4136", // Red
+        trail_running: "#DC143C", // Crimson (darker red)
+        track_running: "#FF6B6B", // Coral (lighter red)
         // Winter cross-country skiing (blue)
         xc_classic: "#0074D9", // Blue
         xc_skating: "#0074D9", // Blue
@@ -137,16 +142,9 @@
       const randomColors = {};
 
       function getRandomColor() {
-        // Avoid blue (210-270), green (90-150), and red (0-30, 330-360)
-        // Use orange/yellow (30-90), cyan (150-210), magenta/purple (270-330)
-        const safeRanges = [
-          { min: 30, max: 90 }, // Orange to yellow
-          { min: 150, max: 210 }, // Cyan
-          { min: 270, max: 330 }, // Magenta to purple
-        ];
-        const range = safeRanges[Math.floor(Math.random() * safeRanges.length)];
-        const hue = Math.floor(Math.random() * (range.max - range.min)) + range.min;
-        return `hsl(${hue}, 70%, 50%)`;
+        // Use gradients of grey (0% saturation, varying lightness)
+        const lightness = Math.floor(Math.random() * 30) + 35; // 35-65% lightness
+        return `hsl(0, 0%, ${lightness}%)`;
       }
 
       function getActivityColor(type) {
@@ -169,6 +167,8 @@
         // Full opacity for running and all skiing categories; 0.5 for others
         const focusCategories = [
           "running",
+          "trail_running",
+          "track_running",
           "xc_classic",
           "xc_skating",
           "xc_double_poling",
@@ -289,10 +289,14 @@
             });
 
             // Add popup to the polyline
+            const categoryName = category
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (l) => l.toUpperCase());
+            const typeDisplay = activity.isRace ? `${categoryName}, Race` : categoryName;
             const popupContent = `
               <div class="activity-popup">
                 <h3>${activity.name}${activity.isRace ? " 🏆" : ""}</h3>
-                <p><strong>Type:</strong> ${activity.type}</p>
+                <p><strong>Type:</strong> ${typeDisplay}</p>
                 <p><strong>Date:</strong> ${formatDate(activity.date)}</p>
                 <p><strong>Distance:</strong> ${activity.distance.toFixed(2)} km</p>
                 <p><strong>Duration:</strong> ${formatDuration(activity.duration)}</p>
@@ -344,10 +348,14 @@
             mapLayers.push(marker);
 
             // Add popup with activity details
+            const categoryName = category
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (l) => l.toUpperCase());
+            const typeDisplay = activity.isRace ? `${categoryName}, Race` : categoryName;
             const popupContent = `
               <div class="activity-popup">
-                <h3>${activity.name}</h3>
-                <p><strong>Type:</strong> ${activity.type}</p>
+                <h3>${activity.name}${activity.isRace ? " 🏆" : ""}</h3>
+                <p><strong>Type:</strong> ${typeDisplay}</p>
                 <p><strong>Date:</strong> ${formatDate(activity.date)}</p>
                 <p><strong>Distance:</strong> ${activity.distance.toFixed(2)} km</p>
                 <p><strong>Duration:</strong> ${formatDuration(activity.duration)}</p>
@@ -511,7 +519,7 @@
           const yearFiltersDiv = document.getElementById("year-filters");
           const years = Object.keys(allActivitiesByYear).sort().reverse();
 
-          years.forEach((year) => {
+          years.forEach((year, index) => {
             const label = document.createElement("label");
             label.style.display = "block";
             label.style.margin = "3px 0";
@@ -521,9 +529,12 @@
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.value = year;
+            // Check all years by default
             checkbox.checked = true;
             checkbox.style.marginRight = "5px";
-            selectedYears.add(year);
+            if (checkbox.checked) {
+              selectedYears.add(year);
+            }
 
             checkbox.addEventListener("change", (e) => {
               if (e.target.checked) {

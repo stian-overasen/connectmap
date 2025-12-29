@@ -21,7 +21,7 @@ if not GARMIN_SESSION:
 # Cache configuration
 CACHE_DIR = Path('cache')
 CACHE_DURATION_HOURS = 6  # Refresh cache every 6 hours
-YEARS_TO_LOAD = 5  # Load last 5 years
+YEARS_TO_LOAD = 10  # Load last 10 years
 
 # Ensure cache directory exists
 CACHE_DIR.mkdir(exist_ok=True)
@@ -64,6 +64,34 @@ def save_cache(year, activities):
         print(f'Error saving cache for {year}: {e}')
 
 
+def load_raw_cache(year):
+    """Load raw Garmin API data for a specific year if valid"""
+    cache_file = CACHE_DIR / f'raw_cache_{year}.json'
+    if cache_file.exists():
+        try:
+            with open(cache_file, 'r') as f:
+                cache_data = json.load(f)
+                cache_time = datetime.fromisoformat(cache_data['timestamp'])
+                if datetime.now() - cache_time < timedelta(hours=CACHE_DURATION_HOURS):
+                    print(f'Using raw cached data for {year}')
+                    return cache_data['raw_activities']
+        except Exception as e:
+            print(f'Error loading raw cache for {year}: {e}')
+    return None
+
+
+def save_raw_cache(year, raw_activities):
+    """Save raw Garmin API data for a specific year to cache"""
+    try:
+        cache_file = CACHE_DIR / f'raw_cache_{year}.json'
+        cache_data = {'timestamp': datetime.now().isoformat(), 'raw_activities': raw_activities}
+        with open(cache_file, 'w') as f:
+            json.dump(cache_data, f, indent=2)
+        print(f'Cached raw data for {len(raw_activities)} activities in {year}')
+    except Exception as e:
+        print(f'Error saving raw cache for {year}: {e}')
+
+
 @app.get('/api/activities')
 async def get_activities():
     """Fetch activities from the last 5 years"""
@@ -75,44 +103,76 @@ async def get_activities():
         client = None
 
         for year in years:
-            # Check cache first
+            # Check processed cache first
             cached_activities = load_cache(year)
             if cached_activities is not None:
                 all_activities[str(year)] = cached_activities
                 continue
 
-            # Login to Garmin Connect if not already logged in
-            if client is None:
-                client = Garmin()
-                client.garth.loads(GARMIN_SESSION)
+            # Check raw cache second
+            raw_activities = load_raw_cache(year)
+            if raw_activities is None:
+                # Login to Garmin Connect if not already logged in
+                if client is None:
+                    client = Garmin()
+                    client.garth.loads(GARMIN_SESSION)
 
-            # Get activities for this year
-            start_date = datetime(year, 1, 1)
-            end_date = datetime(year, 12, 31)
+                # Get activities for this year from API
+                start_date = datetime(year, 1, 1)
+                end_date = datetime(year, 12, 31)
 
-            print(f'\nFetching activities from {start_date.date()} to {end_date.date()}...')
-            activities = client.get_activities_by_date(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
-            print(f'Found {len(activities)} activities for {year}')
+                print(f'\nFetching activities from {start_date.date()} to {end_date.date()}...')
+                activities = client.get_activities_by_date(
+                    start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+                )
+                print(f'Found {len(activities)} activities for {year}')
 
-            # Process activities to extract relevant data including GPS tracks
+                # Fetch raw data for each activity
+                raw_activities = []
+                print(f'Downloading raw data for {year} activities...')
+                for activity in tqdm(activities, desc=f'Downloading {year}', unit='activity'):
+                    activity_id = activity['activityId']
+                    try:
+                        activity_details = client.get_activity(activity_id)
+                        gpx_data = None
+                        try:
+                            gpx_data = client.download_activity(activity_id, dl_fmt=client.ActivityDownloadFormat.GPX)
+                        except Exception as e:
+                            print(f'\nError downloading GPX for activity {activity_id}: {e}')
+
+                        raw_activities.append(
+                            {
+                                'activity': activity,
+                                'details': activity_details,
+                                'gpx': gpx_data.decode('utf-8') if gpx_data else None,
+                            }
+                        )
+                    except Exception as e:
+                        print(f'\nError fetching data for activity {activity_id}: {e}')
+                        continue
+
+                # Save raw cache
+                save_raw_cache(year, raw_activities)
+
+            # Process raw activities
             processed_activities = []
-            print(f'Processing {year} activities and downloading GPS tracks...')
-            for activity in tqdm(activities, desc=f'Loading {year}', unit='activity'):
-                # Get detailed activity data including GPS coordinates
-                activity_id = activity['activityId']
+            print(f'Processing {year} activities...')
+            for raw_activity in tqdm(raw_activities, desc=f'Processing {year}', unit='activity'):
                 try:
-                    activity_details = client.get_activity(activity_id)
+                    activity = raw_activity['activity']
+                    activity_details = raw_activity['details']
+                    gpx_data = raw_activity['gpx']
+                    activity_id = activity['activityId']
 
                     # Check if activity has GPS data
                     if activity_details and 'summaryDTO' in activity_details:
                         summary = activity_details['summaryDTO']
 
                         activity_name = activity.get('activityName', 'Unnamed Activity')
-                        # Detect if activity is a race
-                        is_race = any(
-                            keyword in activity_name.lower()
-                            for keyword in ['race', 'competition', 'løp', 'renn', 'konkurranse', 'cup']
-                        )
+
+                        # Detect if activity is a race using eventType
+                        event_type = activity.get('eventType', {})
+                        is_race = event_type.get('typeKey') == 'race' if event_type else False
 
                         processed_activity = {
                             'id': activity_id,
@@ -128,11 +188,9 @@ async def get_activities():
                             'isRace': is_race,
                         }
 
-                        # Get GPS track data
-                        try:
-                            gpx_data = client.download_activity(activity_id, dl_fmt=client.ActivityDownloadFormat.GPX)
-                            if gpx_data:
-                                # Parse GPX to extract coordinates
+                        # Parse GPX track data if available
+                        if gpx_data:
+                            try:
                                 import xml.etree.ElementTree as ET
 
                                 root = ET.fromstring(gpx_data)
@@ -147,14 +205,14 @@ async def get_activities():
 
                                 if track_points:
                                     processed_activity['track'] = track_points
-                        except Exception as e:
-                            print(f'\nError getting GPS track for activity {activity_id}: {e}')
+                            except Exception as e:
+                                print(f'\nError parsing GPX for activity {activity_id}: {e}')
 
                         # Only include activities with GPS coordinates
                         if processed_activity['startLat'] and processed_activity['startLng']:
                             processed_activities.append(processed_activity)
                 except Exception as e:
-                    print(f'\nError processing activity {activity_id}: {e}')
+                    print(f'\nError processing activity: {e}')
                     continue
 
             all_activities[str(year)] = processed_activities
