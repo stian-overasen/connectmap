@@ -1,0 +1,60 @@
+[project]
+name = "connectmap"
+version = "0.1.0"
+description = "A simple web application to visualize Garmin Connect activities on OpenStreetMap"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.128.0",
+    "garminconnect>=0.2.13",
+    "jinja2>=3.1.6",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.67.1",
+    "uvicorn>=0.40.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+only-include = ["app.py", "setup_oauth.py", "templates/"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "prettier>=0.0.7",
+    "ruff>=0.14.10",
+]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+# Exclude a variety of commonly ignored directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "*.pyc",
+]
+
+[tool.ruff.lint]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default
+select = ["E", "F", "W", "I"]
+ignore = []
+
+# Allow autofix for all enabled rules (when `--fix` is provided)
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+line-ending = "auto"

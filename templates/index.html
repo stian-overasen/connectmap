@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Garmin Connect Map</title>
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+      }
+
+      #map {
+        height: 100vh;
+        width: 100%;
+      }
+
+      #loading {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: white;
+        padding: 10px 20px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        display: none;
+      }
+
+      #loading.show {
+        display: block;
+      }
+
+      .activity-popup {
+        font-size: 14px;
+      }
+
+      .activity-popup h3 {
+        margin: 0 0 10px 0;
+        color: #333;
+      }
+
+      .activity-popup p {
+        margin: 5px 0;
+        color: #666;
+      }
+
+      #stats {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        background: white;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        max-width: 250px;
+      }
+
+      #stats h2 {
+        font-size: 16px;
+        margin-bottom: 10px;
+        color: #333;
+      }
+
+      #stats p {
+        font-size: 14px;
+        margin: 5px 0;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading">Loading activities...</div>
+    <div id="stats">
+      <h2>2025 Activities</h2>
+      <p id="activity-count">Activities: -</p>
+      <p id="total-distance">Total Distance: -</p>
+      <div
+        id="category-stats"
+        style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px"
+      ></div>
+    </div>
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+      // Initialize the map
+      const map = L.map("map").setView([60.9333, 10.6833], 10); // Default to Moelv, Norway
+
+      // Add black and white map tiles (CartoDB Positron)
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          maxZoom: 19,
+        }
+      ).addTo(map);
+
+      // Activity type colors
+      const activityColors = {
+        running: "#FF4136", // Red
+        // Winter cross-country skiing (blue)
+        xc_classic: "#0074D9", // Blue
+        xc_skating: "#0074D9", // Blue
+        xc_double_poling: "#0074D9", // Blue
+        // Roller skiing (green)
+        roller_classic: "#2ECC40", // Green
+        roller_skating: "#2ECC40", // Green
+        roller_double_poling: "#2ECC40", // Green
+      };
+
+      // Cache for random colors
+      const randomColors = {};
+
+      function getRandomColor() {
+        // Avoid blue (210-270), green (90-150), and red (0-30, 330-360)
+        // Use orange/yellow (30-90), cyan (150-210), magenta/purple (270-330)
+        const safeRanges = [
+          { min: 30, max: 90 }, // Orange to yellow
+          { min: 150, max: 210 }, // Cyan
+          { min: 270, max: 330 }, // Magenta to purple
+        ];
+        const range = safeRanges[Math.floor(Math.random() * safeRanges.length)];
+        const hue =
+          Math.floor(Math.random() * (range.max - range.min)) + range.min;
+        return `hsl(${hue}, 70%, 50%)`;
+      }
+
+      function getActivityColor(type) {
+        const normalizedType = type.toLowerCase().replace(/\s+/g, "_");
+
+        // Check if we have a predefined color
+        if (activityColors[normalizedType]) {
+          return activityColors[normalizedType];
+        }
+
+        // Generate and cache a random color for this type
+        if (!randomColors[normalizedType]) {
+          randomColors[normalizedType] = getRandomColor();
+        }
+        return randomColors[normalizedType];
+      }
+
+      function getActivityOpacity(type) {
+        const normalizedType = type.toLowerCase().replace(/\s+/g, "_");
+        // Full opacity for running and all skiing categories; 0.5 for others
+        const focusCategories = [
+          "running",
+          "xc_classic",
+          "xc_skating",
+          "xc_double_poling",
+          "roller_classic",
+          "roller_skating",
+          "roller_double_poling",
+        ];
+        return focusCategories.includes(normalizedType) ? 0.7 : 0.5;
+      }
+
+      function categorizeActivity(activity) {
+        const activityName = (activity.name || "").toLowerCase();
+        const activityType = (activity.type || "").toLowerCase();
+
+        // Check if it's a cross-country skiing activity
+        const isCrossCounrty =
+          activityType.includes("cross") ||
+          activityType.includes("skiing") ||
+          activityType === "cross_country_skiing" ||
+          activityType === "multi_sport";
+
+        if (isCrossCounrty) {
+          // Check if it's roller skiing
+          const isRoller = activityName.includes("roller");
+
+          // Determine the technique
+          let technique = "classic"; // default
+
+          if (activityName.includes("dp") || activityName.includes("stak")) {
+            technique = "double_poling";
+          } else if (
+            activityName.includes("skat") ||
+            activityType.includes("skat")
+          ) {
+            technique = "skating";
+          } else if (
+            activityName.includes("classic") ||
+            activityType.includes("classic")
+          ) {
+            technique = "classic";
+          }
+
+          // Return the appropriate category
+          if (isRoller) {
+            return `roller_${technique}`;
+          } else {
+            return `xc_${technique}`;
+          }
+        }
+
+        const type = activityType.replace(/\s+/g, "_");
+        // Merge hiking into walking
+        if (type === "hiking") {
+          return "walking";
+        }
+        return type;
+      }
+
+      function formatDuration(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (hours > 0) {
+          return `${hours}h ${minutes}m`;
+        }
+        return `${minutes}m`;
+      }
+
+      function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+
+      // Fetch and display activities
+      const loading = document.getElementById("loading");
+      loading.classList.add("show");
+
+      fetch("/api/activities")
+        .then((response) => response.json())
+        .then((data) => {
+          loading.classList.remove("show");
+
+          // Check if we received an error object instead of an array
+          if (!Array.isArray(data)) {
+            if (data.error) {
+              alert("Error loading activities: " + data.error);
+            } else {
+              alert("Unexpected response format from server");
+            }
+            return;
+          }
+
+          const activities = data;
+
+          if (activities.length === 0) {
+            alert("No activities found in the last 30 days");
+            return;
+          }
+
+          // Update stats
+          const totalDistance = activities.reduce(
+            (sum, act) => sum + (act.distance || 0),
+            0
+          );
+          document.getElementById(
+            "activity-count"
+          ).textContent = `Activities: ${activities.length}`;
+          document.getElementById(
+            "total-distance"
+          ).textContent = `Total Distance: ${totalDistance.toFixed(1)} km`;
+
+          // Calculate distance per category
+          const categoryDistances = {};
+          activities.forEach((activity) => {
+            const category = categorizeActivity(activity);
+            if (!categoryDistances[category]) {
+              categoryDistances[category] = 0;
+            }
+            categoryDistances[category] += activity.distance || 0;
+          });
+
+          // Group categories into top-level categories
+          const topLevelCategories = {
+            "Cross Country": {
+              total: 0,
+              subcategories: {},
+              color: "#0074D9", // Blue for XC
+            },
+            Running: {
+              total: 0,
+              subcategories: {},
+              color: "#FF4136", // Red for running
+            },
+            Other: {
+              total: 0,
+              subcategories: {},
+              color: "#AAA",
+            },
+          };
+
+          // XC categories
+          const xcCategories = [
+            "xc_classic",
+            "xc_skating",
+            "xc_double_poling",
+            "roller_classic",
+            "roller_skating",
+            "roller_double_poling",
+          ];
+
+          // Running categories
+          const runningCategories = [
+            "running",
+            "track_running",
+            "trail_running",
+          ];
+
+          // Categorize and sum up distances
+          Object.entries(categoryDistances).forEach(([category, distance]) => {
+            if (xcCategories.includes(category)) {
+              topLevelCategories["Cross Country"].total += distance;
+              topLevelCategories["Cross Country"].subcategories[category] =
+                distance;
+            } else if (runningCategories.includes(category)) {
+              topLevelCategories["Running"].total += distance;
+              topLevelCategories["Running"].subcategories[category] = distance;
+            } else if (!category.toLowerCase().includes("skating")) {
+              // Filter out standalone skating activities
+              topLevelCategories["Other"].total += distance;
+              topLevelCategories["Other"].subcategories[category] = distance;
+            }
+          });
+
+          // Display category stats
+          const categoryStatsDiv = document.getElementById("category-stats");
+          categoryStatsDiv.innerHTML =
+            '<h3 style="font-size: 14px; margin: 5px 0; color: #333;">By Category:</h3>';
+
+          // Sort top-level categories by distance
+          const sortedTopLevel = Object.entries(topLevelCategories)
+            .filter(([_, data]) => data.total > 0)
+            .sort((a, b) => b[1].total - a[1].total);
+
+          sortedTopLevel.forEach(([topCategory, data]) => {
+            // Display top-level category with total
+            categoryStatsDiv.innerHTML += `
+              <p style="margin: 8px 0 3px 0; font-size: 14px; font-weight: bold;">
+                <span style="display: inline-block; width: 12px; height: 12px; background-color: ${
+                  data.color
+                }; margin-right: 5px; border-radius: 2px;"></span>
+                ${topCategory}: ${data.total.toFixed(1)} km
+              </p>
+            `;
+
+            // Display subcategories if not "Other"
+            if (topCategory !== "Other") {
+              const sortedSubs = Object.entries(data.subcategories).sort(
+                (a, b) => b[1] - a[1]
+              );
+              sortedSubs.forEach(([subCategory, distance]) => {
+                const displayName = subCategory
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (l) => l.toUpperCase());
+                const color = getActivityColor(subCategory);
+                categoryStatsDiv.innerHTML += `
+                  <p style="margin: 2px 0 2px 20px; font-size: 12px; color: #666;">
+                    <span style="display: inline-block; width: 10px; height: 10px; background-color: ${color}; margin-right: 5px; border-radius: 2px;"></span>
+                    ${displayName}: ${distance.toFixed(1)} km
+                  </p>
+                `;
+              });
+            } else {
+              // For "Other", just list them normally
+              const sortedSubs = Object.entries(data.subcategories).sort(
+                (a, b) => b[1] - a[1]
+              );
+              sortedSubs.forEach(([subCategory, distance]) => {
+                const displayName = subCategory
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (l) => l.toUpperCase());
+                const color = getActivityColor(subCategory);
+                categoryStatsDiv.innerHTML += `
+                  <p style="margin: 2px 0 2px 20px; font-size: 12px; color: #666;">
+                    <span style="display: inline-block; width: 10px; height: 10px; background-color: ${color}; margin-right: 5px; border-radius: 2px;"></span>
+                    ${displayName}: ${distance.toFixed(1)} km
+                  </p>
+                `;
+              });
+            }
+          });
+
+          // Create bounds to fit all activities
+          const bounds = L.latLngBounds();
+
+          // Add markers and tracks for each activity
+          activities.forEach((activity) => {
+            const category = categorizeActivity(activity);
+            const color = getActivityColor(category);
+
+            // If activity has GPS track data, draw it
+            if (activity.track && activity.track.length > 0) {
+              // Draw the track as a polyline
+              const polyline = L.polyline(activity.track, {
+                color: color,
+                weight: 3,
+                opacity: getActivityOpacity(category),
+              }).addTo(map);
+
+              // Extend bounds to include all track points
+              activity.track.forEach((point) => {
+                bounds.extend(L.latLng(point[0], point[1]));
+              });
+
+              // Add popup to the polyline
+              const popupContent = `
+                <div class="activity-popup">
+                  <h3>${activity.name}</h3>
+                  <p><strong>Type:</strong> ${activity.type}</p>
+                  <p><strong>Date:</strong> ${formatDate(activity.date)}</p>
+                  <p><strong>Distance:</strong> ${activity.distance.toFixed(
+                    2
+                  )} km</p>
+                  <p><strong>Duration:</strong> ${formatDuration(
+                    activity.duration
+                  )}</p>
+                </div>
+              `;
+              polyline.bindPopup(popupContent);
+
+              // Add start marker
+              const startMarker = L.circleMarker(
+                [activity.track[0][0], activity.track[0][1]],
+                {
+                  radius: 6,
+                  fillColor: color,
+                  color: "#fff",
+                  weight: 2,
+                  opacity: 1,
+                  fillOpacity: 0.9,
+                }
+              ).addTo(map);
+              startMarker.bindPopup(popupContent);
+            } else if (activity.startLat && activity.startLng) {
+              // Fallback: just show start/end markers if no track data
+              const latLng = L.latLng(activity.startLat, activity.startLng);
+              bounds.extend(latLng);
+
+              // Create a circle marker
+              const marker = L.circleMarker(latLng, {
+                radius: 8,
+                fillColor: color,
+                color: "#fff",
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8,
+              }).addTo(map);
+
+              // Add popup with activity details
+              const popupContent = `
+                <div class="activity-popup">
+                  <h3>${activity.name}</h3>
+                  <p><strong>Type:</strong> ${activity.type}</p>
+                  <p><strong>Date:</strong> ${formatDate(activity.date)}</p>
+                  <p><strong>Distance:</strong> ${activity.distance.toFixed(
+                    2
+                  )} km</p>
+                  <p><strong>Duration:</strong> ${formatDuration(
+                    activity.duration
+                  )}</p>
+                </div>
+              `;
+              marker.bindPopup(popupContent);
+
+              // If there's an end point different from start, draw a line
+              if (
+                activity.endLat &&
+                activity.endLng &&
+                (activity.endLat !== activity.startLat ||
+                  activity.endLng !== activity.startLng)
+              ) {
+                const endLatLng = L.latLng(activity.endLat, activity.endLng);
+                bounds.extend(endLatLng);
+
+                L.polyline([latLng, endLatLng], {
+                  color: color,
+                  weight: 3,
+                  opacity: 0.6,
+                }).addTo(map);
+              }
+            }
+          });
+
+          // Fit map to show all activities
+          map.fitBounds(bounds, { padding: [50, 50] });
+        })
+        .catch((error) => {
+          loading.classList.remove("show");
+          alert("Error loading activities: " + error);
+          console.error("Error:", error);
+        });
+    </script>
+  </body>
+</html>
