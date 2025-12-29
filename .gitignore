@@ -5,7 +5,7 @@
 oauth_tokens.txt
 
 # Cache files
-activities_cache.json
+cache/*
 
 # Python
 __pycache__/
