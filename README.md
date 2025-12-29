@@ -5,21 +5,67 @@ GPS tracks and category breakdowns.
 
 ## Features
 
-- **Full GPS Track Visualization**: Displays complete activity routes on the map
-- **2025 Activity Data**: Shows all activities from January 1 - December 31, 2025
+- **Full GPS Track Visualization**: Displays complete activity routes on the map with Canvas
+  rendering for optimal performance
+- **Multi-Year Activity Data**: Shows all activities from the last 10 years with year-based
+  filtering
 - **Smart Categorization**:
   - Cross-country skiing (classic, skating, double poling)
   - Roller skiing (classic, skating, double poling)
   - Running (including trail and track running)
-  - Automatic detection based on activity names
+  - Automatic detection based on activity types and names
+- **Race Detection**: Activities marked as races in Garmin Connect display trophy icons 🏆
 - **Color-Coded Display**:
-  - Running: Red
-  - Winter cross-country skiing: Blue
-  - Roller skiing: Green
-  - Other activities: Reduced opacity for focus
+  - Running: Red variants (#FF4136 for running, #DC143C for trail, #FF6B6B for track)
+  - Winter cross-country skiing: Blue (#0074D9)
+  - Roller skiing: Green (#2ECC40)
+  - Other activities: Grey gradients with reduced opacity
 - **Category Statistics**: Grouped distance totals with subcategory breakdowns
-- **Local Caching**: Activities cached for 6 hours to reduce API calls
+- **Two-Tier Caching**:
+  - Raw API data cached separately for faster reprocessing
+  - Processed activities cached for 6 hours to reduce API calls
+- **Year Filtering**: Toggle visibility of activities by year (all 10 years shown by default)
 - **Black & White Map**: Clean CartoDB Positron basemap for better activity visibility
+
+## Activity Categorization Logic
+
+The application automatically categorizes activities based on Garmin activity types and naming
+conventions:
+
+### Cross-Country Skiing Categories
+
+Activities are classified as cross-country skiing if the activity type includes:
+
+- "cross_country_skiing"
+- "cross" or "skiing"
+- "multi_sport"
+
+**Technique Detection** (applied to both winter and roller skiing):
+
+1. **Double Poling**: Activity name contains "dp" or "stak"
+2. **Skating**: Activity name or type contains "skat"
+3. **Classic**: Activity name or type contains "classic", or used as default if no other technique
+   detected
+
+**Winter vs Roller Skiing**:
+
+- **Roller Skiing**: Activity name contains "roller" → categorized as `roller_[technique]`
+- **Winter XC Skiing**: All other XC activities → categorized as `xc_[technique]`
+
+### Running Categories
+
+- **Track Running**: Activity type is "track_running"
+- **Trail Running**: Activity type is "trail_running"
+- **Running**: All other running activity types
+
+### Race Detection
+
+Activities are marked as races (🏆) when `eventType.typeKey == "race"` in the Garmin API response.
+
+### Other Activities
+
+All other activity types (cycling, walking, etc.) are displayed with grey gradients and reduced
+opacity.
 
 ## Prerequisites
 
@@ -89,29 +135,47 @@ GPS tracks and category breakdowns.
    You'll see output showing the progress of loading activities:
 
    ```
-   Fetching activities from 2025-01-01 to 2025-12-31...
-   Found 150 activities
-   Processing activities and downloading GPS tracks...
-   Loading activities: 100%|████████| 150/150 [05:30<00:00, 2.2s/activity]
+   Fetching activities from 2016-01-01 to 2025-12-31...
+   Found 150 activities for 2025
+   Downloading raw data for 2025 activities...
+   Downloading 2025: 100%|████████| 150/150 [03:30<00:00, 1.4s/activity]
+   Processing 2025 activities...
+   Processing 2025: 100%|████████| 150/150 [00:15<00:00, 9.7activity/s]
+   Cached raw data for 150 activities in 2025
+   Cached 148 activities for 2025
    ```
 
-   **Note**: The first load may take several minutes as it downloads GPS data for all activities.
+   **Note**: The first load may take several minutes per year as it downloads GPS data for all
+   activities. Subsequent loads will use cached data.
 
 2. **Open your browser:**
 
-   Navigate to [http://localhost:5000](http://localhost:5000)
-
-3. **View your activities:**
-
-   The map will display all your 2025 activities with GPS tracks color-coded by type.
+   Navigate to [http://localhost:activities from the last 10 years with GPS tracks color-coded by
+   type. Use the year checkboxes to filter which years are displayed.
 
 ## Cache Management
 
+Activities are cached locally in the `cache/` directory with two cache types:
+
+- **Raw cache** (`raw_cache_{year}.json`): Original API responses from Garmin
+- **Processed cache** (`activities_cache_{year}.json`): Processed activity data for the map
+
+Both caches expire after 6 hours. To force a refresh:
+
+````bash
+# Clear all caches (forces re-download from Garmin API)
+rm -rf cache/
+
+# Clear only processed caches (reprocesses from raw cache without API calls)
+rm cache/activities_cache_*.json
+
+# Clear single year cache
+rm cache/activities_cache_2025.json cache/raw_cache_2025
 Activities are cached locally in `activities_cache.json` for 6 hours. To force a refresh:
 
 ```bash
 rm activities_cache.json
-```
+````
 
 Then restart the application.
 

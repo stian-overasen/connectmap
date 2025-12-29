@@ -97,12 +97,12 @@
       >
         <p style="font-weight: bold; margin-bottom: 5px">Years:</p>
       </div>
-      <p id="activity-count">Activities: -</p>
-      <p id="total-distance">Total Distance: -</p>
       <div
         id="category-stats"
-        style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px"
+        style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #ddd"
       ></div>
+      <p id="activity-count">Activities: -</p>
+      <p id="total-distance">Total Distance: -</p>
     </div>
     <div id="map"></div>
 
@@ -239,9 +239,14 @@
         });
       }
 
+      function formatDistance(km) {
+        return km.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      }
+
       // Global variables for filtering
       let allActivitiesByYear = {};
       let selectedYears = new Set();
+      let selectedCategories = new Set(["Cross Country", "Running", "Other"]); // All enabled by default
       let mapLayers = [];
 
       function getFilteredActivities() {
@@ -251,7 +256,28 @@
             filtered.push(...allActivitiesByYear[year]);
           }
         });
-        return filtered;
+
+        // Filter by category
+        const xcCategories = [
+          "xc_classic",
+          "xc_skating",
+          "xc_double_poling",
+          "roller_classic",
+          "roller_skating",
+          "roller_double_poling",
+        ];
+        const runningCategories = ["running", "track_running", "trail_running"];
+
+        return filtered.filter((activity) => {
+          const category = categorizeActivity(activity);
+          if (xcCategories.includes(category)) {
+            return selectedCategories.has("Cross Country");
+          } else if (runningCategories.includes(category)) {
+            return selectedCategories.has("Running");
+          } else {
+            return selectedCategories.has("Other");
+          }
+        });
       }
 
       function updateMap() {
@@ -357,7 +383,7 @@
                 <h3>${activity.name}${activity.isRace ? " 🏆" : ""}</h3>
                 <p><strong>Type:</strong> ${typeDisplay}</p>
                 <p><strong>Date:</strong> ${formatDate(activity.date)}</p>
-                <p><strong>Distance:</strong> ${activity.distance.toFixed(2)} km</p>
+                <p><strong>Distance:</strong> ${formatDistance(activity.distance)} km</p>
                 <p><strong>Duration:</strong> ${formatDuration(activity.duration)}</p>
               </div>
             `;
@@ -396,13 +422,18 @@
         // Update stats
         const totalDistance = activities.reduce((sum, act) => sum + (act.distance || 0), 0);
         document.getElementById("activity-count").textContent = `Activities: ${activities.length}`;
-        document.getElementById(
-          "total-distance"
-        ).textContent = `Total Distance: ${totalDistance.toFixed(1)} km`;
+        document.getElementById("total-distance").textContent = `Total Distance: ${formatDistance(
+          totalDistance
+        )} km`;
 
-        // Calculate distance per category
+        // Calculate distance per category for ALL activities (not just filtered)
+        const allActivities = [];
+        Object.values(allActivitiesByYear).forEach((yearActivities) => {
+          allActivities.push(...yearActivities);
+        });
+
         const categoryDistances = {};
-        activities.forEach((activity) => {
+        allActivities.forEach((activity) => {
           const category = categorizeActivity(activity);
           if (!categoryDistances[category]) {
             categoryDistances[category] = 0;
@@ -457,19 +488,40 @@
         categoryStatsDiv.innerHTML =
           '<h3 style="font-size: 14px; margin: 5px 0; color: #333;">By Category:</h3>';
 
-        const sortedTopLevel = Object.entries(topLevelCategories)
-          .filter(([_, data]) => data.total > 0)
-          .sort((a, b) => b[1].total - a[1].total);
+        const sortedTopLevel = Object.entries(topLevelCategories).sort(
+          (a, b) => b[1].total - a[1].total
+        );
 
         sortedTopLevel.forEach(([topCategory, data]) => {
+          const categoryId = topCategory.replace(/\s+/g, "-").toLowerCase();
+          const isChecked = selectedCategories.has(topCategory);
+
           categoryStatsDiv.innerHTML += `
-            <p style="margin: 8px 0 3px 0; font-size: 14px; font-weight: bold;">
+            <label style="margin: 8px 0 3px 0; font-size: 14px; font-weight: bold; display: block; cursor: pointer;">
+              <input type="checkbox" id="cat-${categoryId}" ${
+            isChecked ? "checked" : ""
+          } style="margin-right: 5px;" />
               <span style="display: inline-block; width: 12px; height: 12px; background-color: ${
                 data.color
-              }; margin-right: 5px; border-radius: 2px;"></span>
-              ${topCategory}: ${data.total.toFixed(1)} km
-            </p>
+              }; margin-right: 5px; border-radius: 2px; vertical-align: middle;"></span>
+              ${topCategory} <span style="opacity: 0.6;">(${formatDistance(data.total)} km)</span>
+            </label>
           `;
+
+          // Add event listener for the checkbox
+          setTimeout(() => {
+            const checkbox = document.getElementById(`cat-${categoryId}`);
+            if (checkbox) {
+              checkbox.addEventListener("change", (e) => {
+                if (e.target.checked) {
+                  selectedCategories.add(topCategory);
+                } else {
+                  selectedCategories.delete(topCategory);
+                }
+                updateMap();
+              });
+            }
+          }, 0);
 
           if (topCategory !== "Other") {
             const sortedSubs = Object.entries(data.subcategories).sort((a, b) => b[1] - a[1]);
@@ -481,7 +533,7 @@
               categoryStatsDiv.innerHTML += `
                 <p style="margin: 2px 0 2px 20px; font-size: 12px; color: #666;">
                   <span style="display: inline-block; width: 10px; height: 10px; background-color: ${color}; margin-right: 5px; border-radius: 2px;"></span>
-                  ${displayName}: ${distance.toFixed(1)} km
+                  ${displayName}: ${formatDistance(distance)} km
                 </p>
               `;
             });
@@ -495,7 +547,7 @@
               categoryStatsDiv.innerHTML += `
                 <p style="margin: 2px 0 2px 20px; font-size: 12px; color: #666;">
                   <span style="display: inline-block; width: 10px; height: 10px; background-color: ${color}; margin-right: 5px; border-radius: 2px;"></span>
-                  ${displayName}: ${distance.toFixed(1)} km
+                  ${displayName}: ${formatDistance(distance)} km
                 </p>
               `;
             });
@@ -545,8 +597,16 @@
               updateMap();
             });
 
+            // Calculate total distance for this year
+            const yearActivities = allActivitiesByYear[year] || [];
+            const yearDistance = yearActivities.reduce((sum, act) => sum + (act.distance || 0), 0);
+
             label.appendChild(checkbox);
-            label.appendChild(document.createTextNode(year));
+            label.appendChild(document.createTextNode(`${year} `));
+            const distanceSpan = document.createElement("span");
+            distanceSpan.style.opacity = "0.6";
+            distanceSpan.textContent = `(${formatDistance(yearDistance)} km)`;
+            label.appendChild(distanceSpan);
             yearFiltersDiv.appendChild(label);
           });
 
