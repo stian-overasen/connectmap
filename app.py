@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -21,9 +22,44 @@ if not GARMIN_SESSION:
 CACHE_DIR = Path('cache')
 CACHE_DURATION_HOURS = 24  # Refresh cache every 6 hours
 YEARS_TO_LOAD = 10  # Load last 10 years
+DB_PATH = CACHE_DIR / 'activities.db'
 
 # Ensure cache directory exists
 CACHE_DIR.mkdir(exist_ok=True)
+
+
+def init_db():
+    """Initialize SQLite database for caching activities"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS activities (
+            id INTEGER PRIMARY KEY,
+            year INTEGER NOT NULL,
+            name TEXT,
+            type TEXT,
+            category TEXT,
+            topLevelCategory TEXT,
+            date TEXT,
+            distance REAL,
+            duration INTEGER,
+            startLat REAL,
+            startLng REAL,
+            endLat REAL,
+            endLng REAL,
+            isRace INTEGER,
+            track TEXT,
+            cache_timestamp TEXT
+        )
+    """)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_year ON activities(year)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON activities(cache_timestamp)')
+    conn.commit()
+    conn.close()
+
+
+# Initialize database on startup
+init_db()
 
 # Category definitions
 XC_CATEGORIES = [
@@ -97,28 +133,112 @@ def index():
 
 def load_cache(year):
     """Load cached activities for a specific year if valid"""
-    cache_file = CACHE_DIR / f'activities_cache_{year}.json'
-    if cache_file.exists():
-        try:
-            with open(cache_file, 'r') as f:
-                cache_data = json.load(f)
-                cache_time = datetime.fromisoformat(cache_data['timestamp'])
-                if datetime.now() - cache_time < timedelta(hours=CACHE_DURATION_HOURS):
-                    print(f'Using cached activities for {year}')
-                    return cache_data['activities']
-        except Exception as e:
-            print(f'Error loading cache for {year}: {e}')
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Check if we have valid cached data for this year
+        cursor.execute(
+            """
+            SELECT cache_timestamp FROM activities
+            WHERE year = ?
+            LIMIT 1
+        """,
+            (year,),
+        )
+        result = cursor.fetchone()
+
+        if result:
+            cache_time = datetime.fromisoformat(result[0])
+            if datetime.now() - cache_time < timedelta(hours=CACHE_DURATION_HOURS):
+                # Fetch all activities for this year
+                cursor.execute(
+                    """
+                    SELECT id, name, type, category, topLevelCategory, date,
+                           distance, duration, startLat, startLng, endLat, endLng,
+                           isRace, track
+                    FROM activities
+                    WHERE year = ?
+                """,
+                    (year,),
+                )
+
+                activities = []
+                for row in cursor.fetchall():
+                    activity = {
+                        'id': row[0],
+                        'name': row[1],
+                        'type': row[2],
+                        'category': row[3],
+                        'topLevelCategory': row[4],
+                        'date': row[5],
+                        'distance': row[6],
+                        'duration': row[7],
+                        'startLat': row[8],
+                        'startLng': row[9],
+                        'endLat': row[10],
+                        'endLng': row[11],
+                        'isRace': bool(row[12]),
+                    }
+                    if row[13]:  # track data
+                        activity['track'] = json.loads(row[13])
+                    activities.append(activity)
+
+                conn.close()
+                print(f'Using cached activities for {year} (SQLite)')
+                return activities
+
+        conn.close()
+    except Exception as e:
+        print(f'Error loading cache for {year}: {e}')
+
     return None
 
 
 def save_cache(year, activities):
     """Save activities for a specific year to cache"""
     try:
-        cache_file = CACHE_DIR / f'activities_cache_{year}.json'
-        cache_data = {'timestamp': datetime.now().isoformat(), 'activities': activities}
-        with open(cache_file, 'w') as f:
-            json.dump(cache_data, f, indent=2)
-        print(f'Cached {len(activities)} activities for {year}')
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Delete old data for this year
+        cursor.execute('DELETE FROM activities WHERE year = ?', (year,))
+
+        # Insert new data
+        cache_timestamp = datetime.now().isoformat()
+        for activity in activities:
+            track_json = json.dumps(activity.get('track')) if activity.get('track') else None
+            cursor.execute(
+                """
+                INSERT INTO activities (
+                    id, year, name, type, category, topLevelCategory, date,
+                    distance, duration, startLat, startLng, endLat, endLng,
+                    isRace, track, cache_timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    activity['id'],
+                    year,
+                    activity['name'],
+                    activity['type'],
+                    activity['category'],
+                    activity['topLevelCategory'],
+                    activity['date'],
+                    activity['distance'],
+                    activity['duration'],
+                    activity['startLat'],
+                    activity['startLng'],
+                    activity['endLat'],
+                    activity['endLng'],
+                    int(activity['isRace']),
+                    track_json,
+                    cache_timestamp,
+                ),
+            )
+
+        conn.commit()
+        conn.close()
+        print(f'Cached {len(activities)} activities for {year} (SQLite)')
     except Exception as e:
         print(f'Error saving cache for {year}: {e}')
 
