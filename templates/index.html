@@ -7,6 +7,14 @@
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+    />
 
     <style>
       * {
@@ -114,6 +122,7 @@
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
     <script>
       // Initialize the map with canvas renderer for better performance
@@ -197,7 +206,11 @@
       let allActivitiesByYear = {};
       let selectedYears = new Set();
       let selectedCategories = new Set(["Cross Country", "Running", "Walking", "Other"]); // All enabled by default
-      let mapLayers = [];
+      let markerCluster = L.markerClusterGroup({
+        chunkedLoading: true,
+        chunkInterval: 200,
+        chunkDelay: 50,
+      });
 
       function getFilteredActivities() {
         const filtered = [];
@@ -214,9 +227,8 @@
       }
 
       function updateMap() {
-        // Clear existing layers
-        mapLayers.forEach((layer) => map.removeLayer(layer));
-        mapLayers = [];
+        // Clear existing markers from cluster
+        markerCluster.clearLayers();
 
         const activities = getFilteredActivities();
 
@@ -238,8 +250,8 @@
             const polyline = L.polyline(activity.track, {
               color: color,
               weight: 3,
-            }).addTo(map);
-            mapLayers.push(polyline);
+            });
+            markerCluster.addLayer(polyline);
 
             // Extend bounds to include all track points
             activity.track.forEach((point) => {
@@ -270,8 +282,8 @@
               weight: 2,
               opacity: 1,
               fillOpacity: 0.9,
-            }).addTo(map);
-            mapLayers.push(startMarker);
+            });
+            markerCluster.addLayer(startMarker);
             startMarker.bindPopup(popupContent);
 
             // Add trophy icon for races
@@ -285,8 +297,8 @@
               const trophyMarker = L.marker([activity.track[0][0], activity.track[0][1]], {
                 icon: trophyIcon,
                 zIndexOffset: 1000,
-              }).addTo(map);
-              mapLayers.push(trophyMarker);
+              });
+              markerCluster.addLayer(trophyMarker);
               trophyMarker.bindPopup(popupContent);
             }
           } else if (activity.startLat && activity.startLng) {
@@ -302,8 +314,8 @@
               weight: 2,
               opacity: 1,
               fillOpacity: 0.8,
-            }).addTo(map);
-            mapLayers.push(marker);
+            });
+            markerCluster.addLayer(marker);
 
             // Add popup with activity details
             const categoryName = category
@@ -333,11 +345,14 @@
               const line = L.polyline([latLng, endLatLng], {
                 color: color,
                 weight: 3,
-              }).addTo(map);
-              mapLayers.push(line);
+              });
+              markerCluster.addLayer(line);
             }
           }
         });
+
+        // Add cluster group to map
+        map.addLayer(markerCluster);
 
         // Fit map to show all activities
         if (bounds.isValid()) {
