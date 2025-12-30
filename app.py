@@ -19,11 +19,74 @@ if not GARMIN_SESSION:
 
 # Cache configuration
 CACHE_DIR = Path('cache')
-CACHE_DURATION_HOURS = 12  # Refresh cache every 6 hours
+CACHE_DURATION_HOURS = 24  # Refresh cache every 6 hours
 YEARS_TO_LOAD = 10  # Load last 10 years
 
 # Ensure cache directory exists
 CACHE_DIR.mkdir(exist_ok=True)
+
+# Category definitions
+XC_CATEGORIES = [
+    'xc_classic',
+    'xc_skating',
+    'xc_double_poling',
+    'roller_classic',
+    'roller_skating',
+    'roller_double_poling',
+]
+RUNNING_CATEGORIES = ['running', 'track_running', 'trail_running']
+WALKING_CATEGORIES = ['walking', 'hiking']
+
+
+def categorize_activity(activity_name, activity_type):
+    """Categorize an activity based on name and type"""
+    activity_name_lower = (activity_name or '').lower()
+    activity_type_lower = (activity_type or '').lower()
+
+    # Check if it's a cross-country skiing activity
+    is_cross_country = (
+        'cross' in activity_type_lower
+        or 'skiing' in activity_type_lower
+        or activity_type_lower == 'cross_country_skiing'
+        or activity_type_lower == 'multi_sport'
+    )
+
+    if is_cross_country:
+        # Check if it's roller skiing
+        is_roller = 'roller' in activity_name_lower
+
+        # Determine the technique
+        technique = 'classic'  # default
+
+        if 'dp' in activity_name_lower or 'stak' in activity_name_lower:
+            technique = 'double_poling'
+        elif 'skat' in activity_name_lower or 'skat' in activity_type_lower:
+            technique = 'skating'
+        elif 'classic' in activity_name_lower or 'classic' in activity_type_lower:
+            technique = 'classic'
+
+        # Return the appropriate category
+        if is_roller:
+            category = f'roller_{technique}'
+        else:
+            category = f'xc_{technique}'
+
+        return category, 'Cross Country'
+
+    # Merge hiking into walking
+    type_normalized = activity_type_lower.replace(' ', '_')
+    if type_normalized == 'hiking':
+        return 'walking', 'Walking'
+
+    # Determine top-level category
+    if type_normalized in RUNNING_CATEGORIES or 'running' in type_normalized:
+        top_level = 'Running'
+    elif type_normalized in WALKING_CATEGORIES or 'walking' in type_normalized:
+        top_level = 'Walking'
+    else:
+        top_level = 'Other'
+
+    return type_normalized, top_level
 
 
 @app.route('/')
@@ -165,15 +228,21 @@ def get_activities():
                         summary = activity_details['summaryDTO']
 
                         activity_name = activity.get('activityName', 'Unnamed Activity')
+                        activity_type = activity.get('activityType', {}).get('typeKey', 'unknown')
 
                         # Detect if activity is a race using eventType
                         event_type = activity.get('eventType', {})
                         is_race = event_type.get('typeKey') == 'race' if event_type else False
 
+                        # Categorize the activity
+                        category, top_level_category = categorize_activity(activity_name, activity_type)
+
                         processed_activity = {
                             'id': activity_id,
                             'name': activity_name,
-                            'type': activity.get('activityType', {}).get('typeKey', 'unknown'),
+                            'type': activity_type,
+                            'category': category,
+                            'topLevelCategory': top_level_category,
                             'date': activity.get('startTimeLocal'),
                             'distance': activity.get('distance', 0) / 1000,  # Convert to km
                             'duration': activity.get('duration', 0),
