@@ -4,14 +4,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from flask import Flask, jsonify, render_template
 from garminconnect import Garmin
 from tqdm import tqdm
 
 load_dotenv()
 
-app = FastAPI(title='Garmin Connect Map Viewer')
+app = Flask(__name__)
 
 # Garmin session token from environment variable
 GARMIN_SESSION = os.getenv('GARMIN_SESSION')
@@ -20,20 +19,17 @@ if not GARMIN_SESSION:
 
 # Cache configuration
 CACHE_DIR = Path('cache')
-CACHE_DURATION_HOURS = 6  # Refresh cache every 6 hours
+CACHE_DURATION_HOURS = 12  # Refresh cache every 6 hours
 YEARS_TO_LOAD = 10  # Load last 10 years
 
 # Ensure cache directory exists
 CACHE_DIR.mkdir(exist_ok=True)
 
 
-@app.get('/', response_class=HTMLResponse)
-async def index():
+@app.route('/')
+def index():
     """Serve the main map page"""
-    template_path = Path('templates/index.html')
-    with open(template_path, 'r') as f:
-        html_content = f.read()
-    return HTMLResponse(content=html_content)
+    return render_template('index.html')
 
 
 def load_cache(year):
@@ -92,8 +88,8 @@ def save_raw_cache(year, raw_activities):
         print(f'Error saving raw cache for {year}: {e}')
 
 
-@app.get('/api/activities')
-async def get_activities():
+@app.route('/api/activities')
+def get_activities():
     """Fetch activities from the last 5 years"""
     try:
         current_year = datetime.now().year
@@ -223,13 +219,11 @@ async def get_activities():
         if client:
             client.logout()
 
-        return all_activities
+        return jsonify(all_activities)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
-    import uvicorn
-
-    uvicorn.run(app, host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5001, debug=True)

@@ -120,16 +120,10 @@ opacity.
 
 ## Running the Application
 
-1. **Start the FastAPI server:**
+1. **Start the Flask server:**
 
    ```bash
-   uv run app.py
-   ```
-
-   Or use uvicorn directly:
-
-   ```bash
-   uv run uvicorn app:app --host 0.0.0.0 --port 5000 --reload
+   uv run python app.py
    ```
 
    You'll see output showing the progress of loading activities:
@@ -150,8 +144,9 @@ opacity.
 
 2. **Open your browser:**
 
-   Navigate to [http://localhost:activities from the last 10 years with GPS tracks color-coded by
-   type. Use the year checkboxes to filter which years are displayed.
+   Navigate to [http://localhost:5000](http://localhost:5000). You'll see a map showing all
+   activities from the last 10 years with GPS tracks color-coded by type. Use the year checkboxes to
+   filter which years are displayed.
 
 ## Cache Management
 
@@ -162,7 +157,7 @@ Activities are cached locally in the `cache/` directory with two cache types:
 
 Both caches expire after 6 hours. To force a refresh:
 
-````bash
+```bash
 # Clear all caches (forces re-download from Garmin API)
 rm -rf cache/
 
@@ -170,12 +165,8 @@ rm -rf cache/
 rm cache/activities_cache_*.json
 
 # Clear single year cache
-rm cache/activities_cache_2025.json cache/raw_cache_2025
-Activities are cached locally in `activities_cache.json` for 6 hours. To force a refresh:
-
-```bash
-rm activities_cache.json
-````
+rm cache/activities_cache_2025.json cache/raw_cache_2025.json
+```
 
 Then restart the application.
 
@@ -187,13 +178,13 @@ The project includes helper scripts for common development tasks:
 
 ```bash
 # Lint all code
-./scripts/lint.sh
+./bin/lint.sh
 
 # Format all code (Python with ruff, Markdown with prettier)
-./scripts/format.sh
+./bin/format.sh
 
 # Run both lint and format
-./scripts/check.sh
+./bin/check.sh
 ```
 
 ### Pre-commit Hooks
@@ -236,7 +227,7 @@ npx prettier --write "*.md"
 
 ## Technology Stack
 
-- **Backend:** FastAPI (Python)
+- **Backend:** Flask (Python)
 - **Frontend:** HTML, JavaScript, Leaflet.js
 - **Maps:** OpenStreetMap (CartoDB Positron)
 - **Data Source:** Garmin Connect API (OAuth)

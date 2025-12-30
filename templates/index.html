@@ -136,6 +136,9 @@
         roller_classic: "#2ECC40", // Green
         roller_skating: "#2ECC40", // Green
         roller_double_poling: "#2ECC40", // Green
+        // Walking (pink)
+        walking: "#FF69B4", // Pink
+        hiking: "#FF69B4", // Pink
       };
 
       // Cache for random colors
@@ -246,7 +249,7 @@
       // Global variables for filtering
       let allActivitiesByYear = {};
       let selectedYears = new Set();
-      let selectedCategories = new Set(["Cross Country", "Running", "Other"]); // All enabled by default
+      let selectedCategories = new Set(["Cross Country", "Running", "Walking", "Other"]); // All enabled by default
       let mapLayers = [];
 
       function getFilteredActivities() {
@@ -267,6 +270,7 @@
           "roller_double_poling",
         ];
         const runningCategories = ["running", "track_running", "trail_running"];
+        const walkingCategories = ["walking", "hiking"];
 
         return filtered.filter((activity) => {
           const category = categorizeActivity(activity);
@@ -274,6 +278,8 @@
             return selectedCategories.has("Cross Country");
           } else if (runningCategories.includes(category)) {
             return selectedCategories.has("Running");
+          } else if (walkingCategories.includes(category)) {
+            return selectedCategories.has("Walking");
           } else {
             return selectedCategories.has("Other");
           }
@@ -453,6 +459,11 @@
             subcategories: {},
             color: "#FF4136",
           },
+          Walking: {
+            total: 0,
+            subcategories: {},
+            color: "#FF69B4",
+          },
           Other: {
             total: 0,
             subcategories: {},
@@ -469,6 +480,7 @@
           "roller_double_poling",
         ];
         const runningCategories = ["running", "track_running", "trail_running"];
+        const walkingCategories = ["walking", "hiking"];
 
         Object.entries(categoryDistances).forEach(([category, distance]) => {
           if (xcCategories.includes(category)) {
@@ -477,6 +489,9 @@
           } else if (runningCategories.includes(category)) {
             topLevelCategories["Running"].total += distance;
             topLevelCategories["Running"].subcategories[category] = distance;
+          } else if (walkingCategories.includes(category)) {
+            topLevelCategories["Walking"].total += distance;
+            topLevelCategories["Walking"].subcategories[category] = distance;
           } else if (!category.toLowerCase().includes("skating")) {
             topLevelCategories["Other"].total += distance;
             topLevelCategories["Other"].subcategories[category] = distance;

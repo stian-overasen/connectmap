@@ -2,10 +2,10 @@
 
 ## Project Overview
 
-A FastAPI web application that visualizes Garmin Connect activities on OpenStreetMap with GPS
-tracks. Single-file backend ([app.py](../app.py)) serves a Leaflet.js frontend
-([templates/index.html](../templates/index.html)) displaying 2025 activities with smart
-categorization.
+A Flask web application that visualizes Garmin Connect activities on OpenStreetMap with GPS tracks.
+Single-file backend ([app.py](../app.py)) serves a Leaflet.js frontend
+([templates/index.html](../templates/index.html)) displaying activities from the last 10 years with
+smart categorization.
 
 ## Architecture & Data Flow
 
@@ -19,7 +19,7 @@ categorization.
 ### Activity Data Pipeline
 
 ```
-Garmin API → Per-Year Cache (6h TTL) → FastAPI /api/activities → Leaflet Map
+Garmin API → Per-Year Cache (6h TTL) → Flask /api/activities → Leaflet Map
 ```
 
 - [app.py](../app.py#L65-L160): Fetches activities from last 5 years, downloads GPX data, parses XML
@@ -63,9 +63,9 @@ Default view: [http://localhost:5000](http://localhost:5000) - Map auto-centers 
 ### Code Quality Pipeline
 All enforced via [pre-commit](../.pre-commit-config.yaml):
 ```bash
-./scripts/check.sh     # Lint + format (recommended before commits)
-./scripts/lint.sh      # Python: ruff check
-./scripts/format.sh    # Python: ruff format + Markdown: prettier
+./bin/check.sh     # Lint + format (recommended before commits)
+./bin/lint.sh      # Python: ruff check
+./bin/format.sh    # Python: ruff format + Markdown: prettier
 ````
 
 **Ruff configuration** ([pyproject.toml](../pyproject.toml#L33-L56)):
@@ -74,21 +74,21 @@ All enforced via [pre-commit](../.pre-commit-config.yaml):
 - Select: E, F, W, I (pycodestyle + Pyflakes + import sorting)
 - Auto-fix enabled for all rules
 
-**IMPORTANT**: Always run `./scripts/check.sh` after making code changes to ensure formatting and
+**IMPORTANT**: Always run `./bin/check.sh` after making code changes to ensure formatting and
 linting compliance.
 
 ### Testing Changes
 
 1. Clear cache to test API changes: `rm -rf cache/` (removes all year caches)
 2. Clear single year: `rm cache/activities_cache_{year}.json`
-3. Watch mode automatically reloads FastAPI on file changes
+3. Debug mode automatically reloads Flask on file changes (`debug=True`)
 4. Check browser console for frontend JavaScript errors
 
 ### Python Style
 
 - Single quotes everywhere (`'string'` not `"string"`)
-- Type hints minimal - FastAPI endpoints use response models implicitly
-- Exception handling: Broad `except Exception` with user-friendly `HTTPException(status_code=500)`
+- Type hints minimal - Flask routes return plain dicts/JSON
+- Exception handling: Broad `except Exception` with user-friendly `jsonify({'error': str(e)}), 500`
 - Progress indicators: Use `tqdm` for long operations (see activity processing loop)
 
 ### File Organization
@@ -96,7 +96,7 @@ linting compliance.
 - Single backend file [app.py](../app.py) - no modules/packages structure
 - Templates in [templates/](../templates/) - plain HTML with inline CSS/JS
 - No static file serving - CDN links for Leaflet.js
-- Scripts in [scripts/](../scripts/) - bash only, use `uv run` for Python commands
+- Scripts in [bin/](../bin/) - bash only, use `uv run` for Python commands
 
 ### Security Patterns
 
@@ -141,7 +141,7 @@ Uses `uv` (not pip/poetry):
 **Key dependencies**:
 
 - `garminconnect` (unofficial API client - may break on Garmin changes)
-- `fastapi` + `uvicorn[standard]` (ASGI server)
+- `flask` (lightweight WSGI web framework)
 - `python-dotenv` (environment variables)
 - `tqdm` (progress bars)
 

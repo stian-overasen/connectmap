@@ -74,7 +74,7 @@ git push -u origin main
 Run all checks one more time:
 
 ```bash
-./scripts/check.sh
+./bin/check.sh
 uv run pre-commit run --all-files
 ```
 
