@@ -291,20 +291,8 @@
             `;
             polyline.bindPopup(popupContent);
 
-            // Add start marker
-            const startMarker = L.circleMarker([activity.track[0][0], activity.track[0][1]], {
-              radius: 6,
-              fillColor: color,
-              color: "#fff",
-              weight: 2,
-              opacity: 1,
-              fillOpacity: 0.9,
-            });
-            markerCluster.addLayer(startMarker);
-            startMarker.bindPopup(popupContent);
-
-            // Add trophy icon for races
             if (activity.isRace) {
+              // Add trophy icon for races only (no regular start marker)
               const trophyIcon = L.divIcon({
                 html: "🏆",
                 className: "trophy-icon",
@@ -317,6 +305,18 @@
               });
               markerCluster.addLayer(trophyMarker);
               trophyMarker.bindPopup(popupContent);
+            } else {
+              // Add regular start marker for non-races
+              const startMarker = L.circleMarker([activity.track[0][0], activity.track[0][1]], {
+                radius: 6,
+                fillColor: color,
+                color: "#fff",
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.9,
+              });
+              markerCluster.addLayer(startMarker);
+              startMarker.bindPopup(popupContent);
             }
           } else if (activity.startLat && activity.startLng) {
             // Fallback: just show start/end markers if no track data
