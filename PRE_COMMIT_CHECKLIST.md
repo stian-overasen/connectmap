@@ -75,7 +75,6 @@ Run all checks one more time:
 
 ```bash
 ./bin/check.sh
-uv run pre-commit run --all-files
 ```
 
 Both should pass with no errors.
