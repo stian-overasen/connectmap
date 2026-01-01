@@ -186,27 +186,65 @@ def load_all_cached_activities(years):
 
 
 def load_raw_cache():
-    """Load raw Garmin API data from cache"""
-    cache_file = CACHE_DIR / 'raw_cache.json'
-    if cache_file.exists():
+    """Load raw Garmin API data from cache (current year + historical)"""
+    current_cache = CACHE_DIR / 'raw_cache_current.json'
+    historical_cache = CACHE_DIR / 'raw_cache_historical.json'
+
+    raw_activities = []
+
+    # Load historical cache
+    if historical_cache.exists():
         try:
-            with open(cache_file, 'r') as f:
-                cache_data = json.load(f)
-                print('Using raw cached data')
-                return cache_data['raw_activities']
+            with open(historical_cache, 'r') as f:
+                historical_data = json.load(f)
+                raw_activities.extend(historical_data['raw_activities'])
+                print(f'Loaded {len(historical_data["raw_activities"])} historical activities from cache')
         except Exception as e:
-            print(f'Error loading raw cache: {e}')
-    return None
+            print(f'Error loading historical cache: {e}')
+
+    # Load current year cache
+    if current_cache.exists():
+        try:
+            with open(current_cache, 'r') as f:
+                current_data = json.load(f)
+                raw_activities.extend(current_data['raw_activities'])
+                print(f'Loaded {len(current_data["raw_activities"])} current year activities from cache')
+        except Exception as e:
+            print(f'Error loading current year cache: {e}')
+
+    return raw_activities if raw_activities else None
 
 
 def save_raw_cache(raw_activities):
-    """Save raw Garmin API data to cache"""
+    """Save raw Garmin API data to cache (split by current year vs historical)"""
     try:
-        cache_file = CACHE_DIR / 'raw_cache.json'
-        cache_data = {'timestamp': datetime.now().isoformat(), 'raw_activities': raw_activities}
-        with open(cache_file, 'w') as f:
-            json.dump(cache_data, f, indent=2)
-        print(f'Cached raw data for {len(raw_activities)} activities')
+        current_year = datetime.now().year
+        current_year_activities = []
+        historical_activities = []
+
+        for raw_activity in raw_activities:
+            activity = raw_activity['activity']
+            activity_date = datetime.fromisoformat(activity.get('startTimeLocal', '').replace('Z', '+00:00'))
+            if activity_date.year == current_year:
+                current_year_activities.append(raw_activity)
+            else:
+                historical_activities.append(raw_activity)
+
+        # Save current year cache
+        if current_year_activities:
+            current_cache = CACHE_DIR / 'raw_cache_current.json'
+            current_data = {'timestamp': datetime.now().isoformat(), 'raw_activities': current_year_activities}
+            with open(current_cache, 'w') as f:
+                json.dump(current_data, f, indent=2)
+            print(f'Cached {len(current_year_activities)} current year activities')
+
+        # Save historical cache
+        if historical_activities:
+            historical_cache = CACHE_DIR / 'raw_cache_historical.json'
+            historical_data = {'timestamp': datetime.now().isoformat(), 'raw_activities': historical_activities}
+            with open(historical_cache, 'w') as f:
+                json.dump(historical_data, f, indent=2)
+            print(f'Cached {len(historical_activities)} historical activities')
     except Exception as e:
         print(f'Error saving raw cache: {e}')
 
@@ -259,6 +297,178 @@ def save_all_activities(activities_by_year):
         print(f'Cached {total} activities across {len(activities_by_year)} years (SQLite)')
     except Exception as e:
         print(f'Error saving cache: {e}')
+
+
+@app.route('/api/refresh_current_year', methods=['POST'])
+def refresh_current_year():
+    """Refresh activities for the current year by clearing cache and refetching from API"""
+    try:
+        current_year = datetime.now().year
+
+        # Delete current year raw cache
+        current_cache = CACHE_DIR / 'raw_cache_current.json'
+        if current_cache.exists():
+            current_cache.unlink()
+            print('Deleted current year raw cache')
+
+        # Delete current year from SQLite
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM activities WHERE year = ?', (current_year,))
+        conn.commit()
+        deleted_count = cursor.rowcount
+        conn.close()
+        print(f'Deleted {deleted_count} activities for {current_year} from database')
+
+        # Fetch current year activities from Garmin API
+        client = Garmin()
+        client.garth.loads(GARMIN_SESSION)
+
+        start_date = datetime(current_year, 1, 1)
+        end_date = datetime.now()
+
+        print(f'Fetching activities from {start_date.date()} to {end_date.date()}...')
+        activities = client.get_activities_by_date(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+        print(f'Found {len(activities)} activities for {current_year}')
+
+        # Fetch raw data for each activity
+        raw_activities = []
+        print('Downloading raw data for current year activities...')
+        for activity in tqdm(activities, desc='Downloading', unit='activity'):
+            activity_id = activity['activityId']
+            try:
+                activity_details = client.get_activity(activity_id)
+                gpx_data = None
+                try:
+                    gpx_data = client.download_activity(activity_id, dl_fmt=client.ActivityDownloadFormat.GPX)
+                except Exception as e:
+                    print(f'\nError downloading GPX for activity {activity_id}: {e}')
+
+                raw_activities.append(
+                    {
+                        'activity': activity,
+                        'details': activity_details,
+                        'gpx': gpx_data.decode('utf-8') if gpx_data else None,
+                    }
+                )
+            except Exception as e:
+                print(f'\nError fetching data for activity {activity_id}: {e}')
+                continue
+
+        client.logout()
+
+        # Save current year raw cache
+        if raw_activities:
+            current_cache_data = {'timestamp': datetime.now().isoformat(), 'raw_activities': raw_activities}
+            with open(current_cache, 'w') as f:
+                json.dump(current_cache_data, f, indent=2)
+            print(f'Saved {len(raw_activities)} current year activities to cache')
+
+        # Process and save to database
+        processed_activities = []
+        print('Processing current year activities...')
+        for raw_activity in tqdm(raw_activities, desc='Processing', unit='activity'):
+            try:
+                activity = raw_activity['activity']
+                activity_details = raw_activity['details']
+                gpx_data = raw_activity['gpx']
+                activity_id = activity['activityId']
+
+                if activity_details and 'summaryDTO' in activity_details:
+                    summary = activity_details['summaryDTO']
+
+                    activity_name = activity.get('activityName', 'Unnamed Activity')
+                    activity_type = activity.get('activityType', {}).get('typeKey', 'unknown')
+
+                    event_type = activity.get('eventType', {})
+                    is_race = event_type.get('typeKey') == 'race' if event_type else False
+
+                    category, top_level_category = categorize_activity(activity_name, activity_type)
+
+                    processed_activity = {
+                        'id': activity_id,
+                        'name': activity_name,
+                        'type': activity_type,
+                        'category': category,
+                        'topLevelCategory': top_level_category,
+                        'date': activity.get('startTimeLocal'),
+                        'distance': activity.get('distance', 0) / 1000,
+                        'duration': activity.get('duration', 0),
+                        'startLat': summary.get('startLatitude'),
+                        'startLng': summary.get('startLongitude'),
+                        'endLat': summary.get('endLatitude'),
+                        'endLng': summary.get('endLongitude'),
+                        'isRace': is_race,
+                    }
+
+                    if gpx_data:
+                        try:
+                            import xml.etree.ElementTree as ET
+
+                            root = ET.fromstring(gpx_data)
+                            ns = {'gpx': 'http://www.topografix.com/GPX/1/1'}
+                            track_points = []
+
+                            for trkpt in root.findall('.//gpx:trkpt', ns):
+                                lat = float(trkpt.get('lat'))
+                                lon = float(trkpt.get('lon'))
+                                track_points.append([lat, lon])
+
+                            if track_points:
+                                processed_activity['track'] = track_points
+                        except Exception as e:
+                            print(f'\nError parsing GPX for activity {activity_id}: {e}')
+
+                    if processed_activity['startLat'] and processed_activity['startLng']:
+                        processed_activities.append(processed_activity)
+            except Exception as e:
+                print(f'\nError processing activity: {e}')
+                continue
+
+        # Save to database
+        if processed_activities:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cache_timestamp = datetime.now().isoformat()
+
+            for activity in processed_activities:
+                track_json = json.dumps(activity.get('track')) if activity.get('track') else None
+                cursor.execute(
+                    """
+                    INSERT INTO activities (
+                        id, year, name, type, category, topLevelCategory, date,
+                        distance, duration, startLat, startLng, endLat, endLng,
+                        isRace, track, cache_timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        activity['id'],
+                        current_year,
+                        activity['name'],
+                        activity['type'],
+                        activity['category'],
+                        activity['topLevelCategory'],
+                        activity['date'],
+                        activity['distance'],
+                        activity['duration'],
+                        activity['startLat'],
+                        activity['startLng'],
+                        activity['endLat'],
+                        activity['endLng'],
+                        int(activity['isRace']),
+                        track_json,
+                        cache_timestamp,
+                    ),
+                )
+
+            conn.commit()
+            conn.close()
+            print(f'Saved {len(processed_activities)} activities to database')
+
+        return jsonify({str(current_year): processed_activities})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/activities')

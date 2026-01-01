@@ -117,6 +117,23 @@
       ></div>
       <p id="activity-count" class="summary">Activities: -</p>
       <p id="total-distance" class="summary">Total Distance: -</p>
+      <button
+        id="refresh-current-year"
+        style="
+          margin-top: 10px;
+          padding: 8px 12px;
+          background-color: #0074d9;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          width: 100%;
+        "
+      >
+        Refresh Current Year
+      </button>
+      <p id="refresh-status" style="font-size: 11px; margin-top: 5px; color: #666"></p>
     </div>
     <div id="map"></div>
 
@@ -495,70 +512,154 @@
       const loading = document.getElementById("loading");
       loading.classList.add("show");
 
-      fetch("/api/activities")
-        .then((response) => response.json())
-        .then((data) => {
-          loading.classList.remove("show");
+      // Function to load and display activities
+      function loadActivities(apiUrl = "/api/activities") {
+        loading.classList.add("show");
 
-          // Store activities by year
-          allActivitiesByYear = data;
+        fetch(apiUrl)
+          .then((response) => response.json())
+          .then((data) => {
+            loading.classList.remove("show");
 
-          // Create year filters
-          const yearFiltersDiv = document.getElementById("year-filters");
-          const years = Object.keys(allActivitiesByYear).sort().reverse();
-
-          years.forEach((year, index) => {
-            const label = document.createElement("label");
-            label.style.display = "block";
-            label.style.margin = "3px 0";
-            label.style.fontSize = "13px";
-            label.style.cursor = "pointer";
-
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.value = year;
-            // Check all years by default
-            checkbox.checked = true;
-            checkbox.style.marginRight = "5px";
-            if (checkbox.checked) {
-              selectedYears.add(year);
-            }
-
-            checkbox.addEventListener("change", (e) => {
-              if (e.target.checked) {
-                selectedYears.add(year);
-              } else {
-                selectedYears.delete(year);
-              }
-              updateMap();
+            // Merge new data with existing data
+            Object.keys(data).forEach((year) => {
+              allActivitiesByYear[year] = data[year];
             });
 
-            // Calculate total distance for this year
-            const yearActivities = allActivitiesByYear[year] || [];
-            const yearDistance = yearActivities.reduce((sum, act) => sum + (act.distance || 0), 0);
+            // Create year filters if they don't exist
+            const yearFiltersDiv = document.getElementById("year-filters");
+            if (yearFiltersDiv.children.length === 1) {
+              // Only has the header, need to create filters
+              const years = Object.keys(allActivitiesByYear).sort().reverse();
 
-            label.appendChild(checkbox);
-            label.appendChild(document.createTextNode(`${year} `));
-            const distanceSpan = document.createElement("span");
-            distanceSpan.style.opacity = "0.6";
-            distanceSpan.textContent = `(${formatDistance(yearDistance)} km)`;
-            label.appendChild(distanceSpan);
-            yearFiltersDiv.appendChild(label);
+              years.forEach((year, index) => {
+                const label = document.createElement("label");
+                label.style.display = "block";
+                label.style.margin = "3px 0";
+                label.style.fontSize = "13px";
+                label.style.cursor = "pointer";
+
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.value = year;
+                checkbox.checked = true;
+                checkbox.style.marginRight = "5px";
+                if (checkbox.checked) {
+                  selectedYears.add(year);
+                }
+
+                checkbox.addEventListener("change", (e) => {
+                  if (e.target.checked) {
+                    selectedYears.add(year);
+                  } else {
+                    selectedYears.delete(year);
+                  }
+                  updateMap();
+                });
+
+                // Calculate total distance for this year
+                const yearActivities = allActivitiesByYear[year] || [];
+                const yearDistance = yearActivities.reduce(
+                  (sum, act) => sum + (act.distance || 0),
+                  0
+                );
+
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(`${year} `));
+                const distanceSpan = document.createElement("span");
+                distanceSpan.style.opacity = "0.6";
+                distanceSpan.textContent = `(${formatDistance(yearDistance)} km)`;
+                label.appendChild(distanceSpan);
+                yearFiltersDiv.appendChild(label);
+              });
+            } else {
+              // Update existing year labels with new distances
+              const years = Object.keys(allActivitiesByYear).sort().reverse();
+              const labels = yearFiltersDiv.querySelectorAll("label");
+              labels.forEach((label, index) => {
+                const year = years[index];
+                const yearActivities = allActivitiesByYear[year] || [];
+                const yearDistance = yearActivities.reduce(
+                  (sum, act) => sum + (act.distance || 0),
+                  0
+                );
+                const distanceSpan = label.querySelector("span");
+                if (distanceSpan) {
+                  distanceSpan.textContent = `(${formatDistance(yearDistance)} km)`;
+                }
+              });
+            }
+
+            if (getFilteredActivities().length === 0) {
+              alert("No activities found");
+              return;
+            }
+
+            // Render initial map
+            updateMap();
+          })
+          .catch((error) => {
+            loading.classList.remove("show");
+            alert("Error loading activities: " + error);
+            console.error("Error:", error);
           });
+      }
 
-          if (getFilteredActivities().length === 0) {
-            alert("No activities found");
-            return;
-          }
+      // Initial load
+      loadActivities();
 
-          // Render initial map
-          updateMap();
-        })
-        .catch((error) => {
-          loading.classList.remove("show");
-          alert("Error loading activities: " + error);
-          console.error("Error:", error);
-        });
+      // Refresh current year button handler
+      document.getElementById("refresh-current-year").addEventListener("click", function () {
+        const refreshButton = this;
+        const refreshStatus = document.getElementById("refresh-status");
+
+        // Disable button and show status
+        refreshButton.disabled = true;
+        refreshButton.style.opacity = "0.6";
+        refreshButton.style.cursor = "not-allowed";
+        refreshStatus.textContent = "Refreshing current year data...";
+        refreshStatus.style.color = "#0074d9";
+
+        fetch("/api/refresh_current_year", { method: "POST" })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.error) {
+              throw new Error(data.error);
+            }
+
+            // Update activities with new data
+            Object.keys(data).forEach((year) => {
+              allActivitiesByYear[year] = data[year];
+            });
+
+            // Update the map and stats
+            updateMap();
+
+            // Show success message
+            refreshStatus.textContent = "✓ Current year refreshed successfully!";
+            refreshStatus.style.color = "#2ecc40";
+
+            // Re-enable button after 2 seconds
+            setTimeout(() => {
+              refreshButton.disabled = false;
+              refreshButton.style.opacity = "1";
+              refreshButton.style.cursor = "pointer";
+              refreshStatus.textContent = "";
+            }, 2000);
+          })
+          .catch((error) => {
+            // Show error message
+            refreshStatus.textContent = "✗ Error: " + error.message;
+            refreshStatus.style.color = "#ff4136";
+
+            // Re-enable button
+            refreshButton.disabled = false;
+            refreshButton.style.opacity = "1";
+            refreshButton.style.cursor = "pointer";
+
+            console.error("Error:", error);
+          });
+      });
     </script>
   </body>
 </html>
