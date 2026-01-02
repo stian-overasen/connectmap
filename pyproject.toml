@@ -11,52 +11,34 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.8.0",
-]
-
-[tool.hatch.build.targets.wheel]
-packages = ["."]
-only-include = ["app.py", "setup_oauth.py", "templates/"]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [dependency-groups]
 dev = [
-    "codespell>=2.4.1",
-    "pre-commit>=4.5.1",
-    "prettier>=0.0.7",
-    "ruff>=0.14.10",
+    "codespell",
+    "pre-commit",
+    "prettier",
+    "ruff",
 ]
+
+[tool.uv]
+required-version = ">=0.9.13"
 
 [tool.ruff]
-line-length = 120
-indent-width = 4
-
-# Exclude a variety of commonly ignored directories
-exclude = [
-    ".git",
-    ".venv",
-    "__pycache__",
-    "*.pyc",
-]
+line-length = 160
+target-version = "py311"
 
 [tool.ruff.lint]
-# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default
-select = ["E", "F", "W", "I"]
-ignore = []
-
-# Allow autofix for all enabled rules (when `--fix` is provided)
-fixable = ["ALL"]
-unfixable = []
-
-[tool.ruff.format]
-quote-style = "single"
-indent-style = "space"
-line-ending = "auto"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
 
 [tool.codespell]
 skip = '*.http,*.json'

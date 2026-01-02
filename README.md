@@ -182,9 +182,6 @@ The project includes helper scripts for common development tasks:
 
 # Format all code (Python with ruff, Markdown with prettier)
 ./bin/format.sh
-
-# Run both lint and format
-./bin/check.sh
 ```
 
 ### Pre-commit Hooks

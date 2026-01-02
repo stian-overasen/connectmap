@@ -1,27 +1,25 @@
 {
-  "[json][jsonc][yaml]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnSave": true
-  },
-  "[markdown]": {
-    "editor.formatOnSave": false
-  },
-
-  "[python]": {
-    "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
+    "[json][jsonc][yaml]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
     },
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true
-  },
-
-  "ruff.enable": true,
-  "emeraldwalk.runonsave": {
-    "commands": [
-      {
-        "match": "\\.md$",
-        "cmd": "npx prettier --write ${file}"
-      }
-    ]
-  }
+    "[markdown]": {
+        "editor.formatOnSave": false
+    },
+    "[python]": {
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true
+    },
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "cmd": "npx prettier --write ${file}",
+                "match": "\\.md$"
+            }
+        ]
+    },
+    "ruff.enable": true
 }

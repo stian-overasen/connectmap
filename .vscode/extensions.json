@@ -1,11 +1,12 @@
 {
-  "recommendations": [
-    "charliermarsh.ruff",
-    "editorconfig.editorconfig",
-    "emeraldwalk.runonsave",
-    "esbenp.prettier-vscode",
-    "ms-python.debugpy",
-    "ms-python.python",
-    "njpwerner.autodocstring"
-  ]
+    "recommendations": [
+        "charliermarsh.ruff",
+        "editorconfig.editorconfig",
+        "emeraldwalk.runonsave",
+        "esbenp.prettier-vscode",
+        "ms-python.debugpy",
+        "ms-python.python",
+        "njpwerner.autodocstring",
+        "thinker.sort-json"
+    ]
 }

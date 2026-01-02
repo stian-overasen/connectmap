@@ -63,7 +63,6 @@ Default view: [http://localhost:5000](http://localhost:5000) - Map auto-centers 
 ### Code Quality Pipeline
 All enforced via [pre-commit](../.pre-commit-config.yaml):
 ```bash
-./bin/check.sh     # Lint + format (recommended before commits)
 ./bin/lint.sh      # Python: ruff check
 ./bin/format.sh    # Python: ruff format + Markdown: prettier
 ````

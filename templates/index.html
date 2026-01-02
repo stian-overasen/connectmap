@@ -1,665 +1,830 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Garmin Connect Map</title>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Garmin Connect Map</title>
 
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
-    />
+        <!-- Leaflet CSS -->
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        />
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+        />
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+        />
 
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
 
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
-          sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-      }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    "Noto Sans", Helvetica, Arial, sans-serif,
+                    "Apple Color Emoji", "Segoe UI Emoji";
+            }
 
-      #map {
-        height: 100vh;
-        width: 100%;
-      }
+            #map {
+                height: 100vh;
+                width: 100%;
+            }
 
-      #loading {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: white;
-        padding: 10px 20px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        z-index: 1000;
-        display: none;
-      }
+            #loading {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+                z-index: 1000;
+                display: none;
+            }
 
-      #loading.show {
-        display: block;
-      }
+            #loading.show {
+                display: block;
+            }
 
-      .activity-popup {
-        font-size: 14px;
-      }
+            .activity-popup {
+                font-size: 14px;
+            }
 
-      .activity-popup h3 {
-        margin: 0 0 10px 0;
-        color: #333;
-      }
+            .activity-popup h3 {
+                margin: 0 0 10px 0;
+                color: #333;
+            }
 
-      .activity-popup p {
-        margin: 5px 0;
-        color: #666;
-      }
+            .activity-popup p {
+                margin: 5px 0;
+                color: #666;
+            }
 
-      #stats {
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        background: white;
-        padding: 15px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        z-index: 1000;
-        max-width: 250px;
-      }
+            #stats {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: white;
+                padding: 15px;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+                z-index: 1000;
+                max-width: 250px;
+            }
 
-      #stats h2 {
-        font-size: 16px;
-        margin-bottom: 10px;
-        color: #333;
-      }
+            #stats h2 {
+                font-size: 16px;
+                margin-bottom: 10px;
+                color: #333;
+            }
 
-      #stats p {
-        font-size: 14px;
-        margin: 5px 0;
-        color: #666;
-      }
+            #stats p {
+                font-size: 14px;
+                margin: 5px 0;
+                color: #666;
+            }
 
-      #stats .summary {
-        font-size: 12px;
-      }
+            #stats .summary {
+                font-size: 12px;
+            }
 
-      .trophy-icon {
-        font-size: 20px;
-        text-align: center;
-        line-height: 24px;
-        background: transparent;
-        border: none;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="loading">Loading activities...</div>
-    <div id="stats">
-      <h2>Activities</h2>
-      <div
-        id="year-filters"
-        style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #ddd"
-      >
-        <p style="font-weight: bold; margin-bottom: 5px">Years:</p>
-      </div>
-      <div
-        id="category-stats"
-        style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #ddd"
-      ></div>
-      <p id="activity-count" class="summary">Activities: -</p>
-      <p id="total-distance" class="summary">Total Distance: -</p>
-      <button
-        id="refresh-current-year"
-        style="
-          margin-top: 10px;
-          padding: 8px 12px;
-          background-color: #0074d9;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 12px;
-          width: 100%;
-        "
-      >
-        Refresh Current Year
-      </button>
-      <p id="refresh-status" style="font-size: 11px; margin-top: 5px; color: #666"></p>
-    </div>
-    <div id="map"></div>
+            .trophy-icon {
+                font-size: 20px;
+                text-align: center;
+                line-height: 24px;
+                background: transparent;
+                border: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="loading">Loading activities...</div>
+        <div id="stats">
+            <h2>Activities</h2>
+            <div
+                id="year-filters"
+                style="
+                    margin-bottom: 10px;
+                    padding-bottom: 10px;
+                    border-bottom: 1px solid #ddd;
+                "
+            >
+                <p style="font-weight: bold; margin-bottom: 5px">Years:</p>
+            </div>
+            <div
+                id="category-stats"
+                style="
+                    margin-bottom: 10px;
+                    padding-bottom: 10px;
+                    border-bottom: 1px solid #ddd;
+                "
+            ></div>
+            <p id="activity-count" class="summary">Activities: -</p>
+            <p id="total-distance" class="summary">Total Distance: -</p>
+            <button
+                id="refresh-current-year"
+                style="
+                    margin-top: 10px;
+                    padding: 8px 12px;
+                    background-color: #0074d9;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    width: 100%;
+                "
+            >
+                Refresh Current Year
+            </button>
+            <p
+                id="refresh-status"
+                style="font-size: 11px; margin-top: 5px; color: #666"
+            ></p>
+        </div>
+        <div id="map"></div>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+        <!-- Leaflet JS -->
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
-    <script>
-      // Initialize the map with canvas renderer for better performance
-      const map = L.map("map", {
-        preferCanvas: true,
-        renderer: L.canvas(),
-      }).setView([60.9333, 10.6833], 10); // Default to Moelv, Norway
+        <script>
+            // Initialize the map with canvas renderer for better performance
+            const map = L.map("map", {
+                preferCanvas: true,
+                renderer: L.canvas(),
+            }).setView([60.9333, 10.6833], 10); // Default to Moelv, Norway
 
-      // Add black and white map tiles (CartoDB Positron)
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
-      }).addTo(map);
+            // Add black and white map tiles (CartoDB Positron)
+            L.tileLayer(
+                "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+                {
+                    attribution:
+                        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    maxZoom: 19,
+                }
+            ).addTo(map);
 
-      // Activity type colors
-      const activityColors = {
-        running: "#FF4136", // Red
-        trail_running: "#DC143C", // Crimson (darker red)
-        track_running: "#FF6B6B", // Coral (lighter red)
-        // Winter cross-country skiing (blue)
-        xc_classic: "#0074D9", // Blue
-        xc_skating: "#0074D9", // Blue
-        xc_double_poling: "#0074D9", // Blue
-        // Roller skiing (green)
-        roller_classic: "#2ECC40", // Green
-        roller_skating: "#2ECC40", // Green
-        roller_double_poling: "#2ECC40", // Green
-        // Walking (pink)
-        walking: "#FF69B4", // Pink
-        hiking: "#FF69B4", // Pink
-      };
+            // Activity type colors
+            const activityColors = {
+                running: "#FF4136", // Red
+                trail_running: "#DC143C", // Crimson (darker red)
+                track_running: "#FF6B6B", // Coral (lighter red)
+                // Winter cross-country skiing (blue)
+                xc_classic: "#0074D9", // Blue
+                xc_skating: "#0074D9", // Blue
+                xc_double_poling: "#0074D9", // Blue
+                // Roller skiing (green)
+                roller_classic: "#2ECC40", // Green
+                roller_skating: "#2ECC40", // Green
+                roller_double_poling: "#2ECC40", // Green
+                // Walking (pink)
+                walking: "#FF69B4", // Pink
+                hiking: "#FF69B4", // Pink
+            };
 
-      // Cache for random colors
-      const randomColors = {};
+            // Cache for random colors
+            const randomColors = {};
 
-      function getRandomColor() {
-        // Use gradients of grey (0% saturation, varying lightness)
-        const lightness = Math.floor(Math.random() * 30) + 35; // 35-65% lightness
-        return `hsl(0, 0%, ${lightness}%)`;
-      }
+            function getRandomColor() {
+                // Use gradients of grey (0% saturation, varying lightness)
+                const lightness = Math.floor(Math.random() * 30) + 35; // 35-65% lightness
+                return `hsl(0, 0%, ${lightness}%)`;
+            }
 
-      function getActivityColor(type) {
-        const normalizedType = type.toLowerCase().replace(/\s+/g, "_");
+            function getActivityColor(type) {
+                const normalizedType = type.toLowerCase().replace(/\s+/g, "_");
 
-        // Check if we have a predefined color
-        if (activityColors[normalizedType]) {
-          return activityColors[normalizedType];
-        }
+                // Check if we have a predefined color
+                if (activityColors[normalizedType]) {
+                    return activityColors[normalizedType];
+                }
 
-        // Generate and cache a random color for this type
-        if (!randomColors[normalizedType]) {
-          randomColors[normalizedType] = getRandomColor();
-        }
-        return randomColors[normalizedType];
-      }
+                // Generate and cache a random color for this type
+                if (!randomColors[normalizedType]) {
+                    randomColors[normalizedType] = getRandomColor();
+                }
+                return randomColors[normalizedType];
+            }
 
-      function formatDuration(seconds) {
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        if (hours > 0) {
-          return `${hours}h ${minutes}m`;
-        }
-        return `${minutes}m`;
-      }
+            function formatDuration(seconds) {
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                if (hours > 0) {
+                    return `${hours}h ${minutes}m`;
+                }
+                return `${minutes}m`;
+            }
 
-      function formatDate(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-      }
+            function formatDate(dateString) {
+                const date = new Date(dateString);
+                return date.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                });
+            }
 
-      function formatDistance(km) {
-        return km.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-      }
+            function formatDistance(km) {
+                return km.toLocaleString("nb-NO", {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                });
+            }
 
-      // Global variables for filtering
-      let allActivitiesByYear = {};
-      let selectedYears = new Set();
-      let selectedCategories = new Set(["Cross Country", "Running", "Walking", "Other"]); // All enabled by default
-      let markerCluster = L.markerClusterGroup({
-        chunkedLoading: true,
-        chunkInterval: 200,
-        chunkDelay: 50,
-      });
-
-      function getFilteredActivities() {
-        const filtered = [];
-        selectedYears.forEach((year) => {
-          if (allActivitiesByYear[year]) {
-            filtered.push(...allActivitiesByYear[year]);
-          }
-        });
-
-        // Filter by top-level category
-        return filtered.filter((activity) => {
-          return selectedCategories.has(activity.topLevelCategory);
-        });
-      }
-
-      function updateMap() {
-        // Clear existing markers from cluster
-        markerCluster.clearLayers();
-
-        const activities = getFilteredActivities();
-
-        if (activities.length === 0) {
-          return;
-        }
-
-        // Create bounds to fit all activities
-        const bounds = L.latLngBounds();
-
-        // Add markers and tracks for each activity
-        activities.forEach((activity) => {
-          const category = activity.category;
-          const color = getActivityColor(category);
-
-          // If activity has GPS track data, draw it
-          if (activity.track && activity.track.length > 0) {
-            // Draw the track as a polyline
-            const polyline = L.polyline(activity.track, {
-              color: color,
-              weight: 3,
-            });
-            markerCluster.addLayer(polyline);
-
-            // Extend bounds to include all track points
-            activity.track.forEach((point) => {
-              bounds.extend(L.latLng(point[0], point[1]));
+            // Global variables for filtering
+            let allActivitiesByYear = {};
+            let selectedYears = new Set();
+            let selectedCategories = new Set([
+                "Cross Country",
+                "Running",
+                "Walking",
+                "Other",
+            ]); // All enabled by default
+            let markerCluster = L.markerClusterGroup({
+                chunkedLoading: true,
+                chunkInterval: 200,
+                chunkDelay: 50,
             });
 
-            // Add popup to the polyline
-            const categoryName = category
-              .replace(/_/g, " ")
-              .replace(/\b\w/g, (l) => l.toUpperCase());
-            const typeDisplay = activity.isRace ? `${categoryName}, Race` : categoryName;
-            const popupContent = `
+            function getFilteredActivities() {
+                const filtered = [];
+                selectedYears.forEach((year) => {
+                    if (allActivitiesByYear[year]) {
+                        filtered.push(...allActivitiesByYear[year]);
+                    }
+                });
+
+                // Filter by top-level category
+                return filtered.filter((activity) => {
+                    return selectedCategories.has(activity.topLevelCategory);
+                });
+            }
+
+            function updateMap() {
+                // Clear existing markers from cluster
+                markerCluster.clearLayers();
+
+                const activities = getFilteredActivities();
+
+                if (activities.length === 0) {
+                    return;
+                }
+
+                // Create bounds to fit all activities
+                const bounds = L.latLngBounds();
+
+                // Add markers and tracks for each activity
+                activities.forEach((activity) => {
+                    const category = activity.category;
+                    const color = getActivityColor(category);
+
+                    // If activity has GPS track data, draw it
+                    if (activity.track && activity.track.length > 0) {
+                        // Draw the track as a polyline
+                        const polyline = L.polyline(activity.track, {
+                            color: color,
+                            weight: 3,
+                        });
+                        markerCluster.addLayer(polyline);
+
+                        // Extend bounds to include all track points
+                        activity.track.forEach((point) => {
+                            bounds.extend(L.latLng(point[0], point[1]));
+                        });
+
+                        // Add popup to the polyline
+                        const categoryName = category
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (l) => l.toUpperCase());
+                        const typeDisplay = activity.isRace
+                            ? `${categoryName}, Race`
+                            : categoryName;
+                        const popupContent = `
               <div class="activity-popup">
                 <h3>${activity.name}${activity.isRace ? " 🏆" : ""}</h3>
                 <p><strong>Type:</strong> ${typeDisplay}</p>
                 <p><strong>Date:</strong> ${formatDate(activity.date)}</p>
-                <p><strong>Distance:</strong> ${activity.distance.toFixed(2)} km</p>
-                <p><strong>Duration:</strong> ${formatDuration(activity.duration)}</p>
+                <p><strong>Distance:</strong> ${activity.distance.toFixed(
+                    2
+                )} km</p>
+                <p><strong>Duration:</strong> ${formatDuration(
+                    activity.duration
+                )}</p>
               </div>
             `;
-            polyline.bindPopup(popupContent);
+                        polyline.bindPopup(popupContent);
 
-            if (activity.isRace) {
-              // Add trophy icon for races only (no regular start marker)
-              const trophyIcon = L.divIcon({
-                html: "🏆",
-                className: "trophy-icon",
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
-              });
-              const trophyMarker = L.marker([activity.track[0][0], activity.track[0][1]], {
-                icon: trophyIcon,
-                zIndexOffset: 1000,
-              });
-              markerCluster.addLayer(trophyMarker);
-              trophyMarker.bindPopup(popupContent);
-            } else {
-              // Add regular start marker for non-races
-              const startMarker = L.circleMarker([activity.track[0][0], activity.track[0][1]], {
-                radius: 6,
-                fillColor: color,
-                color: "#fff",
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.9,
-              });
-              markerCluster.addLayer(startMarker);
-              startMarker.bindPopup(popupContent);
-            }
-          } else if (activity.startLat && activity.startLng) {
-            // Fallback: just show start/end markers if no track data
-            const latLng = L.latLng(activity.startLat, activity.startLng);
-            bounds.extend(latLng);
+                        if (activity.isRace) {
+                            // Add trophy icon for races only (no regular start marker)
+                            const trophyIcon = L.divIcon({
+                                html: "🏆",
+                                className: "trophy-icon",
+                                iconSize: [24, 24],
+                                iconAnchor: [12, 12],
+                            });
+                            const trophyMarker = L.marker(
+                                [activity.track[0][0], activity.track[0][1]],
+                                {
+                                    icon: trophyIcon,
+                                    zIndexOffset: 1000,
+                                }
+                            );
+                            markerCluster.addLayer(trophyMarker);
+                            trophyMarker.bindPopup(popupContent);
+                        } else {
+                            // Add regular start marker for non-races
+                            const startMarker = L.circleMarker(
+                                [activity.track[0][0], activity.track[0][1]],
+                                {
+                                    radius: 6,
+                                    fillColor: color,
+                                    color: "#fff",
+                                    weight: 2,
+                                    opacity: 1,
+                                    fillOpacity: 0.9,
+                                }
+                            );
+                            markerCluster.addLayer(startMarker);
+                            startMarker.bindPopup(popupContent);
+                        }
+                    } else if (activity.startLat && activity.startLng) {
+                        // Fallback: just show start/end markers if no track data
+                        const latLng = L.latLng(
+                            activity.startLat,
+                            activity.startLng
+                        );
+                        bounds.extend(latLng);
 
-            // Create a circle marker
-            const marker = L.circleMarker(latLng, {
-              radius: 8,
-              fillColor: color,
-              color: "#fff",
-              weight: 2,
-              opacity: 1,
-              fillOpacity: 0.8,
-            });
-            markerCluster.addLayer(marker);
+                        // Create a circle marker
+                        const marker = L.circleMarker(latLng, {
+                            radius: 8,
+                            fillColor: color,
+                            color: "#fff",
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.8,
+                        });
+                        markerCluster.addLayer(marker);
 
-            // Add popup with activity details
-            const categoryName = category
-              .replace(/_/g, " ")
-              .replace(/\b\w/g, (l) => l.toUpperCase());
-            const typeDisplay = activity.isRace ? `${categoryName}, Race` : categoryName;
-            const popupContent = `
+                        // Add popup with activity details
+                        const categoryName = category
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (l) => l.toUpperCase());
+                        const typeDisplay = activity.isRace
+                            ? `${categoryName}, Race`
+                            : categoryName;
+                        const popupContent = `
               <div class="activity-popup">
                 <h3>${activity.name}${activity.isRace ? " 🏆" : ""}</h3>
                 <p><strong>Type:</strong> ${typeDisplay}</p>
                 <p><strong>Date:</strong> ${formatDate(activity.date)}</p>
-                <p><strong>Distance:</strong> ${formatDistance(activity.distance)} km</p>
-                <p><strong>Duration:</strong> ${formatDuration(activity.duration)}</p>
+                <p><strong>Distance:</strong> ${formatDistance(
+                    activity.distance
+                )} km</p>
+                <p><strong>Duration:</strong> ${formatDuration(
+                    activity.duration
+                )}</p>
               </div>
             `;
-            marker.bindPopup(popupContent);
+                        marker.bindPopup(popupContent);
 
-            // If there's an end point different from start, draw a line
-            if (
-              activity.endLat &&
-              activity.endLng &&
-              (activity.endLat !== activity.startLat || activity.endLng !== activity.startLng)
-            ) {
-              const endLatLng = L.latLng(activity.endLat, activity.endLng);
-              bounds.extend(endLatLng);
+                        // If there's an end point different from start, draw a line
+                        if (
+                            activity.endLat &&
+                            activity.endLng &&
+                            (activity.endLat !== activity.startLat ||
+                                activity.endLng !== activity.startLng)
+                        ) {
+                            const endLatLng = L.latLng(
+                                activity.endLat,
+                                activity.endLng
+                            );
+                            bounds.extend(endLatLng);
 
-              const line = L.polyline([latLng, endLatLng], {
-                color: color,
-                weight: 3,
-              });
-              markerCluster.addLayer(line);
+                            const line = L.polyline([latLng, endLatLng], {
+                                color: color,
+                                weight: 3,
+                            });
+                            markerCluster.addLayer(line);
+                        }
+                    }
+                });
+
+                // Add cluster group to map
+                map.addLayer(markerCluster);
+
+                // Fit map to show all activities
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+
+                updateStats();
             }
-          }
-        });
 
-        // Add cluster group to map
-        map.addLayer(markerCluster);
+            function updateStats() {
+                const activities = getFilteredActivities();
 
-        // Fit map to show all activities
-        if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [50, 50] });
-        }
+                // Update stats for filtered activities
+                const totalDistance = activities.reduce(
+                    (sum, act) => sum + (act.distance || 0),
+                    0
+                );
+                document.getElementById(
+                    "activity-count"
+                ).textContent = `Activities: ${activities.length}`;
+                document.getElementById(
+                    "total-distance"
+                ).textContent = `Total Distance: ${formatDistance(
+                    totalDistance
+                )} km`;
 
-        updateStats();
-      }
+                // Calculate per-category stats for filtered activities
+                const categoryDistances = {};
+                const topLevelCategoryDistances = {};
+                activities.forEach((activity) => {
+                    const category = activity.category;
+                    const topLevel = activity.topLevelCategory;
+                    if (!categoryDistances[category]) {
+                        categoryDistances[category] = 0;
+                    }
+                    categoryDistances[category] += activity.distance || 0;
+                    if (!topLevelCategoryDistances[topLevel]) {
+                        topLevelCategoryDistances[topLevel] = {
+                            total: 0,
+                            subcategories: {},
+                        };
+                    }
+                    topLevelCategoryDistances[topLevel].total +=
+                        activity.distance || 0;
+                    if (
+                        !topLevelCategoryDistances[topLevel].subcategories[
+                            category
+                        ]
+                    ) {
+                        topLevelCategoryDistances[topLevel].subcategories[
+                            category
+                        ] = 0;
+                    }
+                    topLevelCategoryDistances[topLevel].subcategories[
+                        category
+                    ] += activity.distance || 0;
+                });
 
-      function updateStats() {
-        const activities = getFilteredActivities();
+                // Define colors for top-level categories
+                const topLevelColors = {
+                    "Cross Country": "#0074D9",
+                    Running: "#FF4136",
+                    Walking: "#FF69B4",
+                    Other: "#AAA",
+                };
 
-        // Update stats
-        const totalDistance = activities.reduce((sum, act) => sum + (act.distance || 0), 0);
-        document.getElementById("activity-count").textContent = `Activities: ${activities.length}`;
-        document.getElementById("total-distance").textContent = `Total Distance: ${formatDistance(
-          totalDistance
-        )} km`;
+                // Build topLevelCategories object with colors
+                // Always show all possible top-level categories, even if not present in filtered data
+                const allTopLevels = [
+                    "Cross Country",
+                    "Running",
+                    "Walking",
+                    "Other",
+                ];
+                const topLevelCategories = {};
+                allTopLevels.forEach((topLevel) => {
+                    const data = topLevelCategoryDistances[topLevel] || {
+                        total: 0,
+                        subcategories: {},
+                    };
+                    topLevelCategories[topLevel] = {
+                        total: data.total,
+                        subcategories: data.subcategories,
+                        color: topLevelColors[topLevel] || "#AAA",
+                    };
+                });
 
-        // Calculate distance per category for ALL activities (not just filtered)
-        const allActivities = [];
-        Object.values(allActivitiesByYear).forEach((yearActivities) => {
-          allActivities.push(...yearActivities);
-        });
+                // Display category stats (filtered)
+                const categoryStatsDiv =
+                    document.getElementById("category-stats");
+                categoryStatsDiv.innerHTML =
+                    '<h3 style="font-size: 14px; margin: 5px 0; color: #333;">By Category:</h3>';
 
-        const categoryDistances = {};
-        const topLevelCategoryDistances = {};
+                const sortedTopLevel = allTopLevels.map((topLevel) => [
+                    topLevel,
+                    topLevelCategories[topLevel],
+                ]);
 
-        allActivities.forEach((activity) => {
-          const category = activity.category;
-          const topLevel = activity.topLevelCategory;
+                sortedTopLevel.forEach(([topCategory, data]) => {
+                    const categoryId = topCategory
+                        .replace(/\s+/g, "-")
+                        .toLowerCase();
+                    const isChecked = selectedCategories.has(topCategory);
 
-          if (!categoryDistances[category]) {
-            categoryDistances[category] = 0;
-          }
-          categoryDistances[category] += activity.distance || 0;
-
-          if (!topLevelCategoryDistances[topLevel]) {
-            topLevelCategoryDistances[topLevel] = { total: 0, subcategories: {} };
-          }
-          topLevelCategoryDistances[topLevel].total += activity.distance || 0;
-
-          if (!topLevelCategoryDistances[topLevel].subcategories[category]) {
-            topLevelCategoryDistances[topLevel].subcategories[category] = 0;
-          }
-          topLevelCategoryDistances[topLevel].subcategories[category] += activity.distance || 0;
-        });
-
-        // Define colors for top-level categories
-        const topLevelColors = {
-          "Cross Country": "#0074D9",
-          Running: "#FF4136",
-          Walking: "#FF69B4",
-          Other: "#AAA",
-        };
-
-        // Build topLevelCategories object with colors
-        const topLevelCategories = {};
-        Object.entries(topLevelCategoryDistances).forEach(([topLevel, data]) => {
-          topLevelCategories[topLevel] = {
-            total: data.total,
-            subcategories: data.subcategories,
-            color: topLevelColors[topLevel] || "#AAA",
-          };
-        });
-
-        // Display category stats
-        const categoryStatsDiv = document.getElementById("category-stats");
-        categoryStatsDiv.innerHTML =
-          '<h3 style="font-size: 14px; margin: 5px 0; color: #333;">By Category:</h3>';
-
-        const sortedTopLevel = Object.entries(topLevelCategories).sort(
-          (a, b) => b[1].total - a[1].total
-        );
-
-        sortedTopLevel.forEach(([topCategory, data]) => {
-          const categoryId = topCategory.replace(/\s+/g, "-").toLowerCase();
-          const isChecked = selectedCategories.has(topCategory);
-
-          categoryStatsDiv.innerHTML += `
+                    categoryStatsDiv.innerHTML += `
             <label style="margin: 8px 0 3px 0; font-size: 14px; font-weight: bold; display: block; cursor: pointer;">
               <input type="checkbox" id="cat-${categoryId}" ${
-            isChecked ? "checked" : ""
-          } style="margin-right: 5px;" />
+                        isChecked ? "checked" : ""
+                    } style="margin-right: 5px;" />
               <span style="display: inline-block; width: 12px; height: 12px; background-color: ${
-                data.color
+                  data.color
               }; margin-right: 5px; border-radius: 2px; vertical-align: middle;"></span>
-              ${topCategory} <span style="opacity: 0.6;">(${formatDistance(data.total)} km)</span>
+              ${topCategory} <span style="opacity: 0.6;">(${formatDistance(
+                        data.total
+                    )} km)</span>
             </label>
           `;
 
-          // Add event listener for the checkbox
-          setTimeout(() => {
-            const checkbox = document.getElementById(`cat-${categoryId}`);
-            if (checkbox) {
-              checkbox.addEventListener("change", (e) => {
-                if (e.target.checked) {
-                  selectedCategories.add(topCategory);
-                } else {
-                  selectedCategories.delete(topCategory);
-                }
-                updateMap();
-              });
-            }
-          }, 0);
+                    // Add event listener for the checkbox
+                    setTimeout(() => {
+                        const checkbox = document.getElementById(
+                            `cat-${categoryId}`
+                        );
+                        if (checkbox) {
+                            checkbox.addEventListener("change", (e) => {
+                                if (e.target.checked) {
+                                    selectedCategories.add(topCategory);
+                                } else {
+                                    selectedCategories.delete(topCategory);
+                                }
+                                updateMap();
+                            });
+                        }
+                    }, 0);
 
-          if (topCategory !== "Other") {
-            const sortedSubs = Object.entries(data.subcategories).sort((a, b) => b[1] - a[1]);
-            sortedSubs.forEach(([subCategory, distance]) => {
-              const displayName = subCategory
-                .replace(/_/g, " ")
-                .replace(/\b\w/g, (l) => l.toUpperCase());
-              const color = getActivityColor(subCategory);
-              categoryStatsDiv.innerHTML += `
-                <p style="margin: 2px 0 2px 20px; font-size: 12px; color: #666;">
-                  <span style="display: inline-block; width: 10px; height: 10px; background-color: ${color}; margin-right: 5px; border-radius: 2px;"></span>
-                  ${displayName}: ${formatDistance(distance)} km
-                </p>
-              `;
-            });
-          } else {
-            const sortedSubs = Object.entries(data.subcategories).sort((a, b) => b[1] - a[1]);
-            sortedSubs.forEach(([subCategory, distance]) => {
-              const displayName = subCategory
-                .replace(/_/g, " ")
-                .replace(/\b\w/g, (l) => l.toUpperCase());
-              const color = getActivityColor(subCategory);
-              categoryStatsDiv.innerHTML += `
-                <p style="margin: 2px 0 2px 20px; font-size: 12px; color: #666;">
-                  <span style="display: inline-block; width: 10px; height: 10px; background-color: ${color}; margin-right: 5px; border-radius: 2px;"></span>
-                  ${displayName}: ${formatDistance(distance)} km
-                </p>
-              `;
-            });
-          }
-        });
-      }
-
-      // Fetch and display activities
-      const loading = document.getElementById("loading");
-      loading.classList.add("show");
-
-      // Function to load and display activities
-      function loadActivities(apiUrl = "/api/activities") {
-        loading.classList.add("show");
-
-        fetch(apiUrl)
-          .then((response) => response.json())
-          .then((data) => {
-            loading.classList.remove("show");
-
-            // Merge new data with existing data
-            Object.keys(data).forEach((year) => {
-              allActivitiesByYear[year] = data[year];
-            });
-
-            // Create year filters if they don't exist
-            const yearFiltersDiv = document.getElementById("year-filters");
-            if (yearFiltersDiv.children.length === 1) {
-              // Only has the header, need to create filters
-              const years = Object.keys(allActivitiesByYear).sort().reverse();
-
-              years.forEach((year, index) => {
-                const label = document.createElement("label");
-                label.style.display = "block";
-                label.style.margin = "3px 0";
-                label.style.fontSize = "13px";
-                label.style.cursor = "pointer";
-
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.value = year;
-                checkbox.checked = true;
-                checkbox.style.marginRight = "5px";
-                if (checkbox.checked) {
-                  selectedYears.add(year);
-                }
-
-                checkbox.addEventListener("change", (e) => {
-                  if (e.target.checked) {
-                    selectedYears.add(year);
-                  } else {
-                    selectedYears.delete(year);
-                  }
-                  updateMap();
+                    const sortedSubs = Object.entries(data.subcategories).sort(
+                        (a, b) => b[1] - a[1]
+                    );
+                    sortedSubs.forEach(([subCategory, distance]) => {
+                        const displayName = subCategory
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (l) => l.toUpperCase());
+                        const color = getActivityColor(subCategory);
+                        categoryStatsDiv.innerHTML += `
+              <p style="margin: 2px 0 2px 20px; font-size: 12px; color: #666;">
+                <span style="display: inline-block; width: 10px; height: 10px; background-color: ${color}; margin-right: 5px; border-radius: 2px;"></span>
+                ${displayName}: ${formatDistance(distance)} km
+              </p>
+            `;
+                    });
                 });
 
-                // Calculate total distance for this year
-                const yearActivities = allActivitiesByYear[year] || [];
-                const yearDistance = yearActivities.reduce(
-                  (sum, act) => sum + (act.distance || 0),
-                  0
-                );
-
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(`${year} `));
-                const distanceSpan = document.createElement("span");
-                distanceSpan.style.opacity = "0.6";
-                distanceSpan.textContent = `(${formatDistance(yearDistance)} km)`;
-                label.appendChild(distanceSpan);
-                yearFiltersDiv.appendChild(label);
-              });
-            } else {
-              // Update existing year labels with new distances
-              const years = Object.keys(allActivitiesByYear).sort().reverse();
-              const labels = yearFiltersDiv.querySelectorAll("label");
-              labels.forEach((label, index) => {
-                const year = years[index];
-                const yearActivities = allActivitiesByYear[year] || [];
-                const yearDistance = yearActivities.reduce(
-                  (sum, act) => sum + (act.distance || 0),
-                  0
-                );
-                const distanceSpan = label.querySelector("span");
-                if (distanceSpan) {
-                  distanceSpan.textContent = `(${formatDistance(yearDistance)} km)`;
-                }
-              });
+                // Update year filter labels to reflect current category filter
+                const yearFiltersDiv = document.getElementById("year-filters");
+                const years = Object.keys(allActivitiesByYear).sort().reverse();
+                const labels = yearFiltersDiv.querySelectorAll("label");
+                labels.forEach((label, index) => {
+                    const year = years[index];
+                    // Only count activities in this year that match current category filter
+                    const yearActivities = (
+                        allActivitiesByYear[year] || []
+                    ).filter((act) =>
+                        selectedCategories.has(act.topLevelCategory)
+                    );
+                    const yearDistance = yearActivities.reduce(
+                        (sum, act) => sum + (act.distance || 0),
+                        0
+                    );
+                    const distanceSpan = label.querySelector("span");
+                    if (distanceSpan) {
+                        distanceSpan.textContent = `(${formatDistance(
+                            yearDistance
+                        )} km)`;
+                    }
+                });
             }
 
-            if (getFilteredActivities().length === 0) {
-              alert("No activities found");
-              return;
+            // Fetch and display activities
+            const loading = document.getElementById("loading");
+            loading.classList.add("show");
+
+            // Function to load and display activities
+            function loadActivities(apiUrl = "/api/activities") {
+                loading.classList.add("show");
+
+                fetch(apiUrl)
+                    .then((response) => response.json())
+                    .then((data) => {
+                        loading.classList.remove("show");
+
+                        // Merge new data with existing data
+                        Object.keys(data).forEach((year) => {
+                            allActivitiesByYear[year] = data[year];
+                        });
+
+                        // Create year filters if they don't exist
+                        const yearFiltersDiv =
+                            document.getElementById("year-filters");
+                        if (yearFiltersDiv.children.length === 1) {
+                            // Only has the header, need to create filters
+                            const years = Object.keys(allActivitiesByYear)
+                                .sort()
+                                .reverse();
+
+                            // Add All/None buttons
+                            const btnContainer = document.createElement("div");
+                            btnContainer.style.marginBottom = "6px";
+                            btnContainer.style.display = "flex";
+                            btnContainer.style.gap = "6px";
+
+                            const allBtn = document.createElement("button");
+                            allBtn.textContent = "All";
+                            allBtn.style.fontSize = "12px";
+                            allBtn.style.padding = "2px 8px";
+                            allBtn.style.borderRadius = "3px";
+                            allBtn.style.border = "1px solid #ccc";
+                            allBtn.style.background = "#f5f5f5";
+                            allBtn.style.cursor = "pointer";
+                            allBtn.addEventListener("click", () => {
+                                years.forEach((year) =>
+                                    selectedYears.add(year)
+                                );
+                                // Update checkboxes
+                                yearFiltersDiv
+                                    .querySelectorAll("input[type=checkbox]")
+                                    .forEach((cb) => {
+                                        cb.checked = true;
+                                    });
+                                updateMap();
+                            });
+
+                            const noneBtn = document.createElement("button");
+                            noneBtn.textContent = "None";
+                            noneBtn.style.fontSize = "12px";
+                            noneBtn.style.padding = "2px 8px";
+                            noneBtn.style.borderRadius = "3px";
+                            noneBtn.style.border = "1px solid #ccc";
+                            noneBtn.style.background = "#f5f5f5";
+                            noneBtn.style.cursor = "pointer";
+                            noneBtn.addEventListener("click", () => {
+                                years.forEach((year) =>
+                                    selectedYears.delete(year)
+                                );
+                                // Update checkboxes
+                                yearFiltersDiv
+                                    .querySelectorAll("input[type=checkbox]")
+                                    .forEach((cb) => {
+                                        cb.checked = false;
+                                    });
+                                updateMap();
+                            });
+
+                            btnContainer.appendChild(allBtn);
+                            btnContainer.appendChild(noneBtn);
+                            yearFiltersDiv.appendChild(btnContainer);
+
+                            years.forEach((year, index) => {
+                                const label = document.createElement("label");
+                                label.style.display = "block";
+                                label.style.margin = "3px 0";
+                                label.style.fontSize = "13px";
+                                label.style.cursor = "pointer";
+
+                                const checkbox =
+                                    document.createElement("input");
+                                checkbox.type = "checkbox";
+                                checkbox.value = year;
+                                checkbox.checked = true;
+                                checkbox.style.marginRight = "5px";
+                                if (checkbox.checked) {
+                                    selectedYears.add(year);
+                                }
+
+                                checkbox.addEventListener("change", (e) => {
+                                    if (e.target.checked) {
+                                        selectedYears.add(year);
+                                    } else {
+                                        selectedYears.delete(year);
+                                    }
+                                    updateMap();
+                                });
+
+                                // Calculate total distance for this year
+                                const yearActivities =
+                                    allActivitiesByYear[year] || [];
+                                const yearDistance = yearActivities.reduce(
+                                    (sum, act) => sum + (act.distance || 0),
+                                    0
+                                );
+
+                                label.appendChild(checkbox);
+                                label.appendChild(
+                                    document.createTextNode(`${year} `)
+                                );
+                                const distanceSpan =
+                                    document.createElement("span");
+                                distanceSpan.style.opacity = "0.6";
+                                distanceSpan.textContent = `(${formatDistance(
+                                    yearDistance
+                                )} km)`;
+                                label.appendChild(distanceSpan);
+                                yearFiltersDiv.appendChild(label);
+                            });
+                        } else {
+                            // Update existing year labels with new distances
+                            const years = Object.keys(allActivitiesByYear)
+                                .sort()
+                                .reverse();
+                            const labels =
+                                yearFiltersDiv.querySelectorAll("label");
+                            labels.forEach((label, index) => {
+                                const year = years[index];
+                                const yearActivities =
+                                    allActivitiesByYear[year] || [];
+                                const yearDistance = yearActivities.reduce(
+                                    (sum, act) => sum + (act.distance || 0),
+                                    0
+                                );
+                                const distanceSpan =
+                                    label.querySelector("span");
+                                if (distanceSpan) {
+                                    distanceSpan.textContent = `(${formatDistance(
+                                        yearDistance
+                                    )} km)`;
+                                }
+                            });
+                        }
+
+                        if (getFilteredActivities().length === 0) {
+                            alert("No activities found");
+                            return;
+                        }
+
+                        // Render initial map
+                        updateMap();
+                    })
+                    .catch((error) => {
+                        loading.classList.remove("show");
+                        alert("Error loading activities: " + error);
+                        console.error("Error:", error);
+                    });
             }
 
-            // Render initial map
-            updateMap();
-          })
-          .catch((error) => {
-            loading.classList.remove("show");
-            alert("Error loading activities: " + error);
-            console.error("Error:", error);
-          });
-      }
+            // Initial load
+            loadActivities();
 
-      // Initial load
-      loadActivities();
+            // Refresh current year button handler
+            document
+                .getElementById("refresh-current-year")
+                .addEventListener("click", function () {
+                    const refreshButton = this;
+                    const refreshStatus =
+                        document.getElementById("refresh-status");
 
-      // Refresh current year button handler
-      document.getElementById("refresh-current-year").addEventListener("click", function () {
-        const refreshButton = this;
-        const refreshStatus = document.getElementById("refresh-status");
+                    // Disable button and show status
+                    refreshButton.disabled = true;
+                    refreshButton.style.opacity = "0.6";
+                    refreshButton.style.cursor = "not-allowed";
+                    refreshStatus.textContent =
+                        "Refreshing current year data...";
+                    refreshStatus.style.color = "#0074d9";
 
-        // Disable button and show status
-        refreshButton.disabled = true;
-        refreshButton.style.opacity = "0.6";
-        refreshButton.style.cursor = "not-allowed";
-        refreshStatus.textContent = "Refreshing current year data...";
-        refreshStatus.style.color = "#0074d9";
+                    fetch("/api/refresh_current_year", { method: "POST" })
+                        .then((response) => response.json())
+                        .then((data) => {
+                            if (data.error) {
+                                throw new Error(data.error);
+                            }
 
-        fetch("/api/refresh_current_year", { method: "POST" })
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.error) {
-              throw new Error(data.error);
-            }
+                            // Update activities with new data
+                            Object.keys(data).forEach((year) => {
+                                allActivitiesByYear[year] = data[year];
+                            });
 
-            // Update activities with new data
-            Object.keys(data).forEach((year) => {
-              allActivitiesByYear[year] = data[year];
-            });
+                            // Update the map and stats
+                            updateMap();
 
-            // Update the map and stats
-            updateMap();
+                            // Show success message
+                            refreshStatus.textContent =
+                                "✓ Current year refreshed successfully!";
+                            refreshStatus.style.color = "#2ecc40";
 
-            // Show success message
-            refreshStatus.textContent = "✓ Current year refreshed successfully!";
-            refreshStatus.style.color = "#2ecc40";
+                            // Re-enable button after 2 seconds
+                            setTimeout(() => {
+                                refreshButton.disabled = false;
+                                refreshButton.style.opacity = "1";
+                                refreshButton.style.cursor = "pointer";
+                                refreshStatus.textContent = "";
+                            }, 2000);
+                        })
+                        .catch((error) => {
+                            // Show error message
+                            refreshStatus.textContent =
+                                "✗ Error: " + error.message;
+                            refreshStatus.style.color = "#ff4136";
 
-            // Re-enable button after 2 seconds
-            setTimeout(() => {
-              refreshButton.disabled = false;
-              refreshButton.style.opacity = "1";
-              refreshButton.style.cursor = "pointer";
-              refreshStatus.textContent = "";
-            }, 2000);
-          })
-          .catch((error) => {
-            // Show error message
-            refreshStatus.textContent = "✗ Error: " + error.message;
-            refreshStatus.style.color = "#ff4136";
+                            // Re-enable button
+                            refreshButton.disabled = false;
+                            refreshButton.style.opacity = "1";
+                            refreshButton.style.cursor = "pointer";
 
-            // Re-enable button
-            refreshButton.disabled = false;
-            refreshButton.style.opacity = "1";
-            refreshButton.style.cursor = "pointer";
-
-            console.error("Error:", error);
-          });
-      });
-    </script>
-  </body>
+                            console.error("Error:", error);
+                        });
+                });
+        </script>
+    </body>
 </html>

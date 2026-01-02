@@ -37,7 +37,7 @@ All files are safe to commit to GitHub. The repository contains:
 - Python application files (app.py, setup_oauth.py)
 - HTML templates
 - Configuration files (pyproject.toml, .prettierrc, etc.)
-- Development scripts (lint.sh, format.sh, check.sh)
+- Development scripts (lint.sh, format.sh)
 
 **Documentation:**
 
@@ -74,7 +74,8 @@ git push -u origin main
 Run all checks one more time:
 
 ```bash
-./bin/check.sh
+./bin/lint.sh
+./bin/format.sh
 ```
 
 Both should pass with no errors.
