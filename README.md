@@ -123,7 +123,7 @@ opacity.
 1. **Start the Flask server:**
 
    ```bash
-   uv run python app.py
+   uv run app.py
    ```
 
    You'll see output showing the progress of loading activities:
