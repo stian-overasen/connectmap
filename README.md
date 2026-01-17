@@ -1,5 +1,16 @@
 # Garmin Connect Map Viewer
 
+## TL;DR
+
+A Flask web app that visualizes your last 10 years of Garmin Connect activities on OpenStreetMap
+with full GPS tracks. Only dependency: [uv](https://github.com/astral-sh/uv) (handles all Python
+packages). Run `uv run setup_oauth.py` once for auth, then `uv run app.py` to view at
+[http://localhost:5000](http://localhost:5000). Auto-categorizes cross-country skiing (classic,
+skating, double poling), roller skiing, running, and more. Color-coded tracks, race markers (🏆),
+year filtering, and smart caching.
+
+---
+
 A web application to visualize your Garmin Connect activities on an OpenStreetMap map with detailed
 GPS tracks and category breakdowns.
 
