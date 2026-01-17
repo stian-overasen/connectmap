@@ -3,12 +3,12 @@ name = "connectmap"
 version = "0.1.0"
 description = "A simple web application to visualize Garmin Connect activities on OpenStreetMap"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
-    "flask>=3.1.0",
-    "garminconnect>=0.2.13",
-    "python-dotenv>=1.0.0",
-    "tqdm>=4.67.1",
+    "flask",
+    "garminconnect",
+    "python-dotenv",
+    "tqdm",
 ]
 
 [dependency-groups]
@@ -24,7 +24,7 @@ required-version = ">=0.9.13"
 
 [tool.ruff]
 line-length = 160
-target-version = "py311"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [

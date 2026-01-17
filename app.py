@@ -395,4 +395,4 @@ def get_activities_for_year(year):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run()
