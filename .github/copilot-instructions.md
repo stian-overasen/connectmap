@@ -19,17 +19,17 @@ smart categorization.
 ### Activity Data Pipeline
 
 ```
-Garmin API → Per-Year Cache (6h TTL) → Flask /api/activities → Leaflet Map
+Garmin API → Raw JSON Cache → SQLite DB → Flask /api/activities → Leaflet Map
 ```
 
-- [app.py](../app.py#L65-L160): Fetches activities from last 5 years, downloads GPX data, parses XML
-  for coordinates
-- Each year cached separately in `cache/activities_cache_{year}.json` for faster subsequent loads
-- GPX track parsing uses `xml.etree.ElementTree` with namespace
-  `{'gpx': 'http://www.topografix.com/GPX/1/1'}`
+- **Two-tier caching**: `raw_cache_{year}.json` stores raw Garmin API responses (intermediate), `activities.db` (SQLite) stores processed activities (primary)
+- [app.py](../app.py#L29): `YEARS_TO_LOAD = 10` - loads last 10 years of activities
+- [app.py](../app.py#L68-L74): Database schema includes GPS coordinates, race flags, and GPX track (stored as JSON array)
+- GPX track parsing uses `xml.etree.ElementTree` with namespace `{'gpx': 'http://www.topografix.com/GPX/1/1'}`
 - Cache files contain personal data - always gitignored (entire `cache/` directory)
 - Initial load per year takes ~2-5 minutes - progress shown with `tqdm` for each year
-- API returns object with years as keys: `{"2021": [...], "2022": [...], ...}`
+- API returns object with years as keys: `{"2025": [...], "2024": [...], ...}`
+- Raw cache persists across restarts; DB can be cleared via `?clear_cache=true` query param
 
 ### Frontend Categorization Logic
 
@@ -67,20 +67,19 @@ All enforced via [pre-commit](../.pre-commit-config.yaml):
 ./bin/format.sh    # Python: ruff format + Markdown: prettier
 ````
 
-**Ruff configuration** ([pyproject.toml](../pyproject.toml#L33-L56)):
+**Ruff configuration** ([pyproject.toml](../pyproject.toml#L23-L40)):
 
-- 120 char line length, single quotes, 4-space indent
-- Select: E, F, W, I (pycodestyle + Pyflakes + import sorting)
+- 160 char line length, single quotes, 4-space indent
+- Select: E, F, W, I, B, C4, UP (pycodestyle + Pyflakes + isort + bugbear + comprehensions + pyupgrade)
 - Auto-fix enabled for all rules
 
-**IMPORTANT**: Always run `./bin/check.sh` after making code changes to ensure formatting and
-linting compliance.
+**IMPORTANT**: Always run `./bin/lint.sh` and `./bin/format.sh` after making code changes to ensure compliance.
 
 ### Testing Changes
 
-1. Clear cache to test API changes: `rm -rf cache/` (removes all year caches)
-2. Clear single year: `rm cache/activities_cache_{year}.json`
-3. Debug mode automatically reloads Flask on file changes (`debug=True`)
+1. Clear cache to test API changes: `rm -rf cache/` (removes all year caches and SQLite DB)
+2. Clear single year: `rm cache/raw_cache_{year}.json` (forces re-fetch) then access `/api/activities/{year}?clear_cache=true`
+3. Debug mode automatically reloads Flask on file changes (edit [app.py](../app.py) to set `debug=True`)
 4. Check browser console for frontend JavaScript errors
 
 ### Python Style
@@ -116,12 +115,11 @@ linting compliance.
 
 ### Changing Date Range
 
-Change `YEARS_TO_LOAD = 5` in [app.py](../app.py#L24) - affects how many years back to load Current
-implementation loads last 5 years dynamically based on current date
+Change `YEARS_TO_LOAD = 10` in [app.py](../app.py#L24) - affects how many years back to load
 
 ### Modifying Cache Duration
 
-Change `CACHE_DURATION_HOURS = 6` in [app.py](../app.py#L23)
+SQLite DB caches indefinitely (no TTL); clear via `?clear_cache=true` query param or `rm cache/activities.db`
 
 ### Adding/Removing Years from Filter
 
@@ -146,13 +144,13 @@ Uses `uv` (not pip/poetry):
 
 ## Known Quirks
 
-1. **Garmin API rate limits**: Cache exists to prevent excessive calls - respect 6h TTL per year
+1. **Garmin API rate limits**: Cache exists to prevent excessive calls - use `?clear_cache=true` to force fresh fetch
 2. **GPX namespace required**: XML parsing fails without
    `ns = {'gpx': 'http://www.topografix.com/GPX/1/1'}`
 3. **Activity type inconsistency**: Garmin uses `activityType.typeKey` + `activityName` - both
    needed for categorization
 4. **Multi-sport handling**: Grouped activities may have misleading types - rely on name parsing
-5. **No database**: All state in per-year JSON caches - concurrent requests share same files (not
+5. **No database migrations**: All state in per-year raw JSON caches + SQLite DB - concurrent requests share same files (not
    production-ready)
 6. **Year boundaries**: Activities loaded by calendar year (Jan 1 - Dec 31), not rolling 12-month
    periods
