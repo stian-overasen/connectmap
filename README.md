@@ -32,6 +32,7 @@ GPS tracks and category breakdowns.
   - Roller skiing: Green (#2ECC40)
   - Other activities: Grey gradients with reduced opacity
 - **Category Statistics**: Grouped distance totals with subcategory breakdowns
+- **MCP Support**: Exposes activities fetch functions as MCP tools for AI clients
 - **Two-Tier Caching**:
   - Raw API data cached separately for faster reprocessing
   - Processed activities cached for 6 hours to reduce API calls
@@ -153,7 +154,17 @@ opacity.
    **Note**: The first load may take several minutes per year as it downloads GPS data for all
    activities. Subsequent loads will use cached data.
 
-2. **Open your browser:**
+2. **Start the MCP server (optional):**
+
+   ```bash
+   uv run app.py --mcp
+   ```
+
+   This starts an MCP server over stdio with tools:
+   - `fetch_activities_for_year(year, clear_cache=false)`
+   - `fetch_activities_for_year_range(start_year, end_year, clear_cache=false)`
+
+3. **Open your browser:**
 
    Navigate to [http://localhost:5000](http://localhost:5000). You'll see a map showing all
    activities from the last 10 years with GPS tracks color-coded by type. Use the year checkboxes to
