@@ -1,5 +1,4 @@
 import json
-import os
 import sqlite3
 import sys
 import xml.etree.ElementTree as ET
@@ -7,24 +6,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
-from garminconnect import Garmin
+from garminconnect import Garmin, GarminConnectAuthenticationError
 from tqdm import tqdm
+
+from credentials import GarminSessionStorageError, MissingGarminSessionError, load_garmin_session_token, save_garmin_session_token
 
 try:
     from mcp.server.fastmcp import FastMCP
 except ImportError:
     FastMCP: Any = None
 
-load_dotenv()
-
 app = Flask(__name__)
-
-# Garmin session token from environment variable
-GARMIN_SESSION = os.getenv("GARMIN_SESSION")
-if not GARMIN_SESSION:
-    raise ValueError("GARMIN_SESSION environment variable is required. Run setup_oauth.py to generate it.")
 
 # Cache configuration
 CACHE_DIR = Path(__file__).parent / "cache"
@@ -151,12 +144,30 @@ def index():
 
 
 def get_garmin_client():
-    """Create and authenticate Garmin Connect client using stored session."""
-    if GARMIN_SESSION is None:
-        raise ValueError("GARMIN_SESSION environment variable is required. Run setup_oauth.py to generate it.")
+    """Create and authenticate Garmin Connect client using the session stored in the OS keychain."""
+    try:
+        garmin_session = load_garmin_session_token()
+    except MissingGarminSessionError as exc:
+        raise ValueError("Garmin session not found in OS keychain. Run setup_oauth.py first.") from exc
+    except GarminSessionStorageError as exc:
+        raise ValueError(f"Failed to load Garmin session from OS keychain: {exc}") from exc
 
     client = Garmin()
-    client.garth.loads(GARMIN_SESSION)
+    try:
+        # login() accepts the token JSON inline and refreshes it if it is about to expire
+        client.login(garmin_session)
+    except GarminConnectAuthenticationError as exc:
+        raise ValueError(f"Garmin session in OS keychain is invalid or expired ({exc}). Run setup_oauth.py to log in again.") from exc
+
+    # Refresh tokens rotate, and garminconnect only persists them to a file
+    # tokenstore, so write a refreshed session back to the keychain
+    refreshed_session = client.client.dumps()
+    if refreshed_session != garmin_session:
+        try:
+            save_garmin_session_token(refreshed_session)
+        except GarminSessionStorageError as exc:
+            print(f"Warning: Failed to save refreshed Garmin session to keychain: {exc}")
+
     return client
 
 
@@ -328,36 +339,30 @@ def clear_cache_for_year(year):
 def fetch_raw_activities_from_garmin(year):
     """Fetch raw activity payloads (activity, details, gpx) from Garmin for one year."""
     client = get_garmin_client()
-    try:
-        start_date = datetime(year, 1, 1)
-        end_date = datetime(year, 12, 31)
-        print(f"Fetching activities from {start_date.date()} to {end_date.date()}...")
-        activities_list = client.get_activities_by_date(start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
-        print(f"Found {len(activities_list)} activities for {year}")
+    start_date = datetime(year, 1, 1)
+    end_date = datetime(year, 12, 31)
+    print(f"Fetching activities from {start_date.date()} to {end_date.date()}...")
+    activities_list = client.get_activities_by_date(start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+    print(f"Found {len(activities_list)} activities for {year}")
 
-        raw_activities = []
-        print(f"Downloading raw data for year {year} activities...")
-        for activity in tqdm(activities_list, desc="Downloading", unit="activity"):
-            activity_id = activity["activityId"]
-            try:
-                activity_details = client.get_activity(activity_id)
-                gpx_data = None
-                try:
-                    gpx_data = client.download_activity(activity_id, dl_fmt=client.ActivityDownloadFormat.GPX)
-                except Exception as e:
-                    print(f"\nError downloading GPX for activity {activity_id}: {e}")
-
-                raw_activities.append({"activity": activity, "details": activity_details, "gpx": gpx_data.decode("utf-8") if gpx_data else None})
-            except Exception as e:
-                print(f"\nError fetching data for activity {activity_id}: {e}")
-                continue
-
-        return raw_activities
-    finally:
+    raw_activities = []
+    print(f"Downloading raw data for year {year} activities...")
+    for activity in tqdm(activities_list, desc="Downloading", unit="activity"):
+        activity_id = activity["activityId"]
         try:
-            client.logout()
+            activity_details = client.get_activity(activity_id)
+            gpx_data = None
+            try:
+                gpx_data = client.download_activity(activity_id, dl_fmt=client.ActivityDownloadFormat.GPX)
+            except Exception as e:
+                print(f"\nError downloading GPX for activity {activity_id}: {e}")
+
+            raw_activities.append({"activity": activity, "details": activity_details, "gpx": gpx_data.decode("utf-8") if gpx_data else None})
         except Exception as e:
-            print(f"Error logging out Garmin client: {e}")
+            print(f"\nError fetching data for activity {activity_id}: {e}")
+            continue
+
+    return raw_activities
 
 
 def process_raw_activities_for_year(raw_activities, year):

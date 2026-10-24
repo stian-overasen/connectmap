@@ -1,20 +1,20 @@
-# Copilot Instructions - Garmin Connect Map Viewer
+# CLAUDE.md
 
 ## Project Overview
 
 A Flask web application that visualizes Garmin Connect activities on OpenStreetMap with GPS tracks.
-Single-file backend ([app.py](../app.py)) serves a Leaflet.js frontend
-([templates/index.html](../templates/index.html)) displaying activities from the last 10 years with
+Single-file backend ([app.py](app.py)) serves a Leaflet.js frontend
+([templates/index.html](templates/index.html)) displaying activities from the last 10 years with
 smart categorization.
 
 ## Architecture & Data Flow
 
 ### Authentication Flow (Critical)
 
-1. User runs `uv run setup_oauth.py` once to generate `GARMIN_SESSION` token via email/password
-2. Token stored in `.env` (gitignored), loaded via `python-dotenv` in [app.py](../app.py)
-3. `Garmin().garth.loads(GARMIN_SESSION)` restores session without repeated logins
-4. **Never** commit credentials - only use `.env.example` for templates
+1. User runs `uv run setup_oauth.py` once to log in with email/password (and MFA)
+2. Token stored in the OS keychain (service `connectmap`, account `garmin_session`) via [credentials.py](credentials.py)
+3. `Garmin().login(token_json)` restores the session; refreshed tokens are written back to the keychain
+4. **Never** commit credentials
 
 ### Activity Data Pipeline
 
@@ -23,8 +23,8 @@ Garmin API → Raw JSON Cache → SQLite DB → Flask /api/activities → Leafle
 ```
 
 - **Two-tier caching**: `raw_cache_{year}.json` stores raw Garmin API responses (intermediate), `activities.db` (SQLite) stores processed activities (primary)
-- [app.py](../app.py#L29): `YEARS_TO_LOAD = 10` - loads last 10 years of activities
-- [app.py](../app.py#L68-L74): Database schema includes GPS coordinates, race flags, and GPX track (stored as JSON array)
+- [app.py](app.py#L29): `YEARS_TO_LOAD = 10` - loads last 10 years of activities
+- [app.py](app.py#L68-L74): Database schema includes GPS coordinates, race flags, and GPX track (stored as JSON array)
 - GPX track parsing uses `xml.etree.ElementTree` with namespace `{'gpx': 'http://www.topografix.com/GPX/1/1'}`
 - Cache files contain personal data - always gitignored (entire `cache/` directory)
 - Initial load per year takes ~2-5 minutes - progress shown with `tqdm` for each year
@@ -33,14 +33,14 @@ Garmin API → Raw JSON Cache → SQLite DB → Flask /api/activities → Leafle
 
 ### Frontend Categorization Logic
 
-[templates/index.html](../templates/index.html#L178-L227) categorizes activities via naming
+[templates/index.html](templates/index.html#L178-L227) categorizes activities via naming
 conventions:
 
 - **Running**: `activity.type` contains "running"
 - **Winter XC skiing**: Type contains "cross"/"skiing" + NO "roller" in name
 - **Roller skiing**: Same but WITH "roller" in name
 - **Technique detection**: "dp"/"stak" → double poling, "skat" → skating, else classic
-- **Race detection**: [app.py](../app.py) checks activity name for keywords ("race", "løp", "renn",
+- **Race detection**: [app.py](app.py) checks activity name for keywords ("race", "løp", "renn",
   "konkurranse", "cup")
 
 Color scheme: Running=Red (#FF4136), XC=Blue (#0074D9), Roller=Green (#2ECC40) Race markers: Trophy
@@ -61,13 +61,13 @@ Frontend maintains global state for filtering activities by year:
 Default view: [http://localhost:5000](http://localhost:5000) - Map auto-centers on all activities
 
 ### Code Quality Pipeline
-All enforced via [pre-commit](../.pre-commit-config.yaml):
+All enforced via [pre-commit](.pre-commit-config.yaml):
 ```bash
 ./bin/lint.sh      # Python: ruff check
 ./bin/format.sh    # Python: ruff format + Markdown: prettier
 ````
 
-**Ruff configuration** ([pyproject.toml](../pyproject.toml#L23-L40)):
+**Ruff configuration** ([pyproject.toml](pyproject.toml#L23-L40)):
 
 - 160 char line length, single quotes, 4-space indent
 - Select: E, F, W, I, B, C4, UP (pycodestyle + Pyflakes + isort + bugbear + comprehensions + pyupgrade)
@@ -79,7 +79,7 @@ All enforced via [pre-commit](../.pre-commit-config.yaml):
 
 1. Clear cache to test API changes: `rm -rf cache/` (removes all year caches and SQLite DB)
 2. Clear single year: `rm cache/raw_cache_{year}.json` (forces re-fetch) then access `/api/activities/{year}?clear_cache=true`
-3. Debug mode automatically reloads Flask on file changes (edit [app.py](../app.py) to set `debug=True`)
+3. Debug mode automatically reloads Flask on file changes (edit [app.py](app.py) to set `debug=True`)
 4. Check browser console for frontend JavaScript errors
 
 ### Python Style
@@ -91,31 +91,31 @@ All enforced via [pre-commit](../.pre-commit-config.yaml):
 
 ### File Organization
 
-- Single backend file [app.py](../app.py) - no modules/packages structure
-- Templates in [templates/](../templates/) - plain HTML with inline CSS/JS
+- Single backend file [app.py](app.py) - no modules/packages structure
+- Templates in [templates/](templates/) - plain HTML with inline CSS/JS
 - No static file serving - CDN links for Leaflet.js
-- Scripts in [bin/](../bin/) - bash only, use `uv run` for Python commands
+- Scripts in [bin/](bin/) - bash only, use `uv run` for Python commands
 
 ### Security Patterns
 
 **Always enforce**:
 
-- Credentials ONLY in `.env` (check [.gitignore](../.gitignore))
+- Credentials ONLY in the OS keychain - never in files
 - Personal data files: `cache/` directory (all year caches), `oauth_tokens.txt` must be gitignored
-- Pre-commit hook detects hardcoded keys (see [PRE_COMMIT_CHECKLIST.md](../PRE_COMMIT_CHECKLIST.md))
-- OAuth tokens expire - users re-run `setup_oauth.py` on `401` errors
+- Pre-commit hook detects hardcoded keys (see [PRE_COMMIT_CHECKLIST.md](PRE_COMMIT_CHECKLIST.md))
+- If the token is rejected, users re-run `setup_oauth.py`
 
 ## Common Tasks
 
 ### Adding New Activity Categories
 
-1. Update color map in [index.html](../templates/index.html#L116-L129)
+1. Update color map in [index.html](templates/index.html#L116-L129)
 2. Modify `categorizeActivity()` logic (lines 178-227)
 3. Add to `focusCategories` array for full opacity (line 176)
 
 ### Changing Date Range
 
-Change `YEARS_TO_LOAD = 10` in [app.py](../app.py#L24) - affects how many years back to load
+Change `YEARS_TO_LOAD = 10` in [app.py](app.py#L24) - affects how many years back to load
 
 ### Modifying Cache Duration
 
@@ -130,7 +130,7 @@ checkboxes for all years returned by backend
 
 Uses `uv` (not pip/poetry):
 
-- [pyproject.toml](../pyproject.toml) defines `dependencies` + `[dependency-groups.dev]`
+- [pyproject.toml](pyproject.toml) defines `dependencies` + `[dependency-groups.dev]`
 - Install: `uv sync` (creates `.venv/`)
 - Add package: `uv add <package>` (auto-updates pyproject.toml)
 - Dev packages: `uv add --dev <package>`
@@ -139,7 +139,7 @@ Uses `uv` (not pip/poetry):
 
 - `garminconnect` (unofficial API client - may break on Garmin changes)
 - `flask` (lightweight WSGI web framework)
-- `python-dotenv` (environment variables)
+- `keyring` (OS keychain access for the Garmin session)
 - `tqdm` (progress bars)
 
 ## Known Quirks

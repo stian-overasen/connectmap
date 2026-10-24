@@ -5,8 +5,7 @@
 ✅ **No sensitive data in repository**
 
 - No hardcoded credentials, tokens, or API keys
-- All secrets loaded from `.env` (which is gitignored)
-- `.env.example` contains only placeholders
+- Garmin session token read from the OS keychain
 
 ✅ **Proper .gitignore configuration**
 
@@ -34,7 +33,7 @@ All files are safe to commit to GitHub. The repository contains:
 
 **Code & Configuration:**
 
-- Python application files (app.py, setup_oauth.py)
+- Python application files (app.py, credentials.py, setup_oauth.py)
 - HTML templates
 - Configuration files (pyproject.toml, .prettierrc, etc.)
 - Development scripts (lint.sh, format.sh)
@@ -43,7 +42,6 @@ All files are safe to commit to GitHub. The repository contains:
 
 - README.md - installation and usage
 - SECURITY.md - security checklist
-- .env.example - credential template
 
 **What's NOT included (protected):**
 

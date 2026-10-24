@@ -81,7 +81,7 @@ opacity.
 
 ## Prerequisites
 
-- Python 3.14 or higher
+- Python 3.15 or higher
 - [uv](https://github.com/astral-sh/uv) package manager
 - Garmin Connect account
 - Active internet connection
@@ -106,29 +106,15 @@ opacity.
 
 ### Setup Garmin Authentication
 
-1. **Copy the environment template:**
+Run the setup script once:
 
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+uv run setup_oauth.py
+```
 
-2. **Generate OAuth session token:**
-
-   ```bash
-   uv run setup_oauth.py
-   ```
-
-   Follow the prompts to enter your Garmin Connect email and password. This is a one-time setup.
-
-3. **Copy the generated token:**
-
-   The script will output a `GARMIN_SESSION` token. Copy this value and add it to your `.env` file:
-
-   ```
-   GARMIN_SESSION=your_session_token_here
-   ```
-
-   **Note:** The session token is required. The application will not start without it.
+Enter your Garmin Connect email, password and MFA code when prompted. The session token is saved in
+the OS keychain (service `connectmap`, account `garmin_session`) and refreshed automatically. If it
+is rejected, run the setup script again.
 
 ## Running the Application
 

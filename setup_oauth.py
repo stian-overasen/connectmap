@@ -1,65 +1,103 @@
+#!/usr/bin/env python3
 """
-Setup script to generate OAuth tokens for Garmin Connect.
-Run this once to get your OAuth tokens, then use them in the main app.
+Garmin Connect OAuth Setup
+Authenticates with Garmin Connect and saves session token to OS keychain
 """
 
-import os
+import sys
+from getpass import getpass
 
-from dotenv import load_dotenv
-from garminconnect import Garmin
+from garminconnect import (
+    Garmin,
+    GarminConnectAuthenticationError,
+    GarminConnectConnectionError,
+    GarminConnectTooManyRequestsError,
+)
 
-load_dotenv()
+from credentials import GarminSessionStorageError, save_garmin_session_token
+
+
+def verify_session_token(session_token):
+    """Log in with only the session token to confirm it authenticates.
+
+    The credential login can appear to succeed with an unauthenticated session
+    (e.g. when Garmin rate-limits the IP), so check before storing the token.
+
+    Returns:
+        The account's full name.
+    """
+    client = Garmin()
+    client.login(session_token)
+    full_name = client.get_full_name()
+    if not full_name:
+        raise GarminConnectAuthenticationError("session is not authenticated (no profile returned)")
+    return full_name
 
 
 def setup_oauth():
-    """Generate OAuth tokens by logging in with email/password"""
+    """Authenticate with Garmin Connect and save session token to keychain."""
     print("Garmin Connect OAuth Setup")
     print("=" * 50)
+    print()
 
     # Get credentials
-    email = os.getenv("GARMIN_EMAIL")
-    password = os.getenv("GARMIN_PASSWORD")
+    email = input("Enter your Garmin Connect email: ").strip()
+    password = getpass("Enter your Garmin Connect password: ")
 
-    if not email or not password:
-        email = input("Enter your Garmin Connect email: ")
-        password = input("Enter your Garmin Connect password: ")
+    print("\nAuthenticating with Garmin Connect...")
 
     try:
-        print("\nLogging in to Garmin Connect...")
-        client = Garmin(email, password)
+        # Create Garmin client and login
+        client = Garmin(email, password, prompt_mfa=lambda: input("Enter MFA code (sent via SMS/email): ").strip())
         client.login()
 
-        print("Login successful!")
-        print("\nRetrieving OAuth tokens...")
+        # Get OAuth session token
+        session_token = client.client.dumps()
 
-        # Get the OAuth tokens from the session
-        # Dump the tokens to dict format that can be serialized
-        oauth1_token = client.garth.dumps()
+        print("Verifying session token...")
+        full_name = verify_session_token(session_token)
 
-        print("\n" + "=" * 50)
-        print("OAuth tokens generated successfully!")
-        print("=" * 50)
-        print("\nAdd these to your .env file:")
-        print(f"\nGARMIN_SESSION={oauth1_token}")
-        print("\n" + "=" * 50)
-        print("\nYou can now remove GARMIN_EMAIL and GARMIN_PASSWORD")
-        print("from your .env file for better security.")
-        print("=" * 50)
+        # Save token in OS keychain
+        save_garmin_session_token(session_token)
 
-        # Optionally save to a file
-        save = input("\nSave tokens to oauth_tokens.txt? (y/n): ")
-        if save.lower() == "y":
-            with open("oauth_tokens.txt", "w") as f:
-                f.write("# Add these to your .env file:\n\n")
-                f.write(f"GARMIN_SESSION={oauth1_token}\n")
-            print("Tokens saved to oauth_tokens.txt")
+        print("\n✓ Authentication successful!")
+        print(f"✓ Logged in as: {full_name}")
+        print("✓ Session token saved to OS keychain (service: connectmap, account: garmin_session)")
+        print("\nYou can now start the app with: uv run app.py")
 
-        client.logout()
+    except GarminSessionStorageError as e:
+        print(f"\n✗ Authentication succeeded, but failed to store token: {e}")
+        print("\nPlease ensure your OS keychain is available and try again.")
+        return False
+
+    except GarminConnectTooManyRequestsError:
+        print("\n✗ Too many requests. Garmin is rate-limiting your IP.")
+        print("\nPlease wait a few minutes and try again.")
+        return False
+
+    except GarminConnectAuthenticationError as e:
+        print(f"\n✗ Authentication failed: {e}")
+        print("\nPlease check your credentials and MFA code, then try again.")
+        print("If this keeps happening, Garmin may be rate-limiting your IP; wait a few minutes.")
+        return False
+
+    except GarminConnectConnectionError as e:
+        print(f"\n✗ Could not connect to Garmin Connect: {e}")
+        print("\nPlease check your internet connection and try again.")
+        return False
 
     except Exception as e:
-        print(f"\nError: {e}")
+        print(f"\n✗ Authentication failed: {e}")
         print("\nPlease check your credentials and try again.")
+        return False
+
+    return True
+
+
+def main():
+    """Console script entry point."""
+    sys.exit(0 if setup_oauth() else 1)
 
 
 if __name__ == "__main__":
-    setup_oauth()
+    main()
