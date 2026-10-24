@@ -2,6 +2,7 @@ import json
 import sqlite3
 import sys
 import xml.etree.ElementTree as ET
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -206,20 +207,19 @@ def parse_bool(value, field_name="value"):
 def load_cached_activities_for_year(year):
     """Load cached activities for a single year from SQLite."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            rows = conn.execute(
+                """
             SELECT id, name, type, category, topLevelCategory, date,
                    distance, duration, startLat, startLng, endLat, endLng,
                    isRace, track
             FROM activities
             WHERE year = ?
         """,
-            (year,),
-        )
+                (year,),
+            ).fetchall()
         activities = []
-        for row in cursor.fetchall():
+        for row in rows:
             activity = {
                 "id": row[0],
                 "name": row[1],
@@ -238,7 +238,6 @@ def load_cached_activities_for_year(year):
             if row[13]:
                 activity["track"] = json.loads(row[13])
             activities.append(activity)
-        conn.close()
         return activities
     except Exception as e:
         print(f"Error loading cached activities for {year}: {e}")
@@ -319,21 +318,6 @@ def save_all_activities(activities_by_year):
         print(f"Cached {total} activities across {len(activities_by_year)} years (SQLite)")
     except Exception as e:
         print(f"Error saving cache: {e}")
-
-
-def clear_cache_for_year(year):
-    """Clear raw and processed cache for a specific year."""
-    cache_file = CACHE_DIR / f"raw_cache_{year}.json"
-    if cache_file.exists():
-        cache_file.unlink()
-        print(f"Deleted raw cache for year {year}")
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM activities WHERE year = ?", (year,))
-    conn.commit()
-    conn.close()
-    print(f"Deleted activities for {year} from database")
 
 
 def fetch_raw_activities_from_garmin(year):
@@ -429,57 +413,57 @@ def process_raw_activities_for_year(raw_activities, year):
 
 
 def save_processed_activities_for_year(year, processed_activities):
-    """Persist processed activities for a year in SQLite."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    """Replace a year's activities in SQLite in a single transaction."""
     cache_timestamp = datetime.now().isoformat()
 
-    for activity in processed_activities:
-        track_json = json.dumps(activity.get("track")) if activity.get("track") else None
-        cursor.execute(
-            """
-            INSERT INTO activities (
+    # closing() releases the connection, and `with conn` rolls back on error so no lock is left behind
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+        conn.execute("DELETE FROM activities WHERE year = ?", (year,))
+        for activity in processed_activities:
+            track_json = json.dumps(activity.get("track")) if activity.get("track") else None
+            conn.execute(
+                """
+            INSERT OR REPLACE INTO activities (
                 id, year, name, type, category, topLevelCategory, date,
                 distance, duration, startLat, startLng, endLat, endLng,
                 isRace, track, cache_timestamp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (
-                activity["id"],
-                year,
-                activity["name"],
-                activity["type"],
-                activity["category"],
-                activity["topLevelCategory"],
-                activity["date"],
-                activity["distance"],
-                activity["duration"],
-                activity["startLat"],
-                activity["startLng"],
-                activity["endLat"],
-                activity["endLng"],
-                int(activity["isRace"]),
-                track_json,
-                cache_timestamp,
-            ),
-        )
+                (
+                    activity["id"],
+                    year,
+                    activity["name"],
+                    activity["type"],
+                    activity["category"],
+                    activity["topLevelCategory"],
+                    activity["date"],
+                    activity["distance"],
+                    activity["duration"],
+                    activity["startLat"],
+                    activity["startLng"],
+                    activity["endLat"],
+                    activity["endLng"],
+                    int(activity["isRace"]),
+                    track_json,
+                    cache_timestamp,
+                ),
+            )
 
-    conn.commit()
-    conn.close()
     print(f"Saved {len(processed_activities)} activities to database for year {year}")
 
 
 def fetch_activities_for_year(year, clear_cache=False):
-    """Fetch activities for a specific year, optionally clearing cache first."""
-    if clear_cache:
-        clear_cache_for_year(year)
+    """Fetch activities for a specific year, optionally bypassing the cache.
 
-    activities = load_cached_activities_for_year(year)
-    if activities and not clear_cache:
-        return activities
+    On refresh the caches are only replaced once Garmin returns data, so a failed refresh keeps the year intact.
+    """
+    if not clear_cache:
+        activities = load_cached_activities_for_year(year)
+        if activities:
+            return activities
 
-    raw_activities = load_raw_cache(year)
-    if raw_activities is None or clear_cache:
+    raw_activities = None if clear_cache else load_raw_cache(year)
+    if raw_activities is None:
         raw_activities = fetch_raw_activities_from_garmin(year)
         if raw_activities:
             save_raw_cache(year, raw_activities)
